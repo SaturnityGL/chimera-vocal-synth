@@ -26,7 +26,7 @@ for tests and the `chimera` CLI.
   computer keyboard and Web MIDI.
 - **Speak**: English text (CMUdict with a letter-to-sound fallback) or IPA, turned into
   gestures and prosody, with the gestural score and a consonant chart on screen.
-- **Sing**: piano roll with lyrics per note; consonants land before the beat. Lyrics can be
+- **Sing**: a pitch roll with lyrics per note; consonants land before the beat. Lyrics can be
   English or Korean (Hangul: one block per note, with Korean sound rules); each language is a
   front end ([docs/language-front-ends.md](docs/language-front-ends.md)).
 - **Beatbox**: pads and a step sequencer, every drum an articulatory gesture.
