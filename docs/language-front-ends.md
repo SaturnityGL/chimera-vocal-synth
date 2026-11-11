@@ -91,7 +91,45 @@ by hand, or to sing a language that has no front end yet.
 3. **Say the phonology** in the syllables (aspiration and its length). Build `Syllable` and
    `Segment` values with `..Default::default()` so later fields don't break you.
 4. **Leave English unchanged.** Tuning the shared voice goes through `docs/hill-climb/README.md`.
-5. **Have a native speaker listen.**
+5. **Run the scramble test**, below, and **have a native speaker listen.**
+
+## The scramble test
+
+`tools/asr/scramble.py` (set up once with `tools/asr/setup.sh`) measures how intelligible a front
+end's singing is on sound alone. A recogniser that knows a lyric fills it in, so it also sings the
+same melody with the lyric's units shuffled (syllables for Chinese and Korean, words for English),
+leaving nothing to guess from.
+
+- **Material:** public-domain texts: two Tang poems (静夜思, 春晓), the folk song 아리랑, Harvard
+  sentences. `--text lang:file` sings your own lines; `tools/asr/probes/` has lines dense in one
+  contrast each. Material dense in what a change touches is the only way to see it.
+- **Rendering:** through CHIMERA's own front ends (`render notes` with lyrics), one note per
+  syllable on one generated tune, a breath between lines, in the male and female voices.
+  A language whose script no front end reads yet is skipped.
+- **Judge:** SenseVoice-Small (sherpa-onnx), one sung line at a time. It's CTC, so it can't
+  hallucinate a loop.
+- **Score:** syllable errors (Chinese as toneless pinyin, Korean as Hangul blocks) or word errors
+  (English), for the real lyric and the mean over the scrambles.
+- **What goes wrong:** each line is aligned with what was heard and the errors split into a
+  syllable's parts (Chinese: initial / final / tone; Korean: initial / vowel / final; English:
+  phonemes, wrong vs dropped), with the commonest confusions. `--analyze <run>/scramble.json`
+  re-reads a run.
+
+On this branch (8 scrambles × 2 voices):
+
+| Language (units) | Real lyric (male / female) | Scrambled (male / female) |
+|---|---|---|
+| Korean, 아리랑 (syllables) | 30.0 / 15.0% | 52.8 / 55.6% |
+| English, Harvard (words) | 48.8 / 53.7% | 68.6 / 75.0% |
+
+The gap between the real and scrambled lyric is what the recogniser fills in from knowing the
+text; the scrambled number is the sound. Korean's commonest errors are ㄹ heard as ㄴ or ㄷ and a
+coda ㄴ dropped; English's are sounds dropped (a third of vowels and consonants), AH heard as ER,
+SH as F and D as T.
+
+Treat about ±2 points as noise at these sizes (8 scrambles × 2 voices) and read the confusion
+counts for the sounds a change targets, not just the total. One recogniser and one tune can't stand
+in for a native listener; the test says where to look and whether a change moved what it aimed at.
 
 ## Not yet
 
