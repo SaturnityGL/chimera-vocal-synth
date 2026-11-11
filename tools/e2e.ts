@@ -103,13 +103,20 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   }
   logs.push(`[${tag}] speech rms then silence ${speechRms.map((r) => r.toFixed(4)).join(",")}`);
   if (!(Math.max(...speechRms.slice(-3)) < 1e-3)) errors.push(`[${tag}] voice still sounding after the phrase: ${speechRms.slice(-3).join(",")}`);
-  // the Examples menu puts a phrase in the box, then reads Examples again
+  // the Examples menu puts a phrase in the box as text (not IPA), then reads Examples again, so
+  // the same phrase can be picked a second time
   const examples = page.getByRole("combobox", { name: "Examples" });
-  await examples.selectOption({ label: "She sells sea shells by the sea shore." });
-  const typed = await page.getByRole("textbox", { name: "Text to speak" }).inputValue();
-  const menuNow = await examples.inputValue();
-  logs.push(`[${tag}] example picked: box "${typed}", menu "${menuNow}"`);
-  if (!typed.startsWith("She sells") || menuNow !== "") errors.push(`[${tag}] the Examples menu didn't fill the box and reset (box "${typed}", menu "${menuNow}")`);
+  const sayBox = page.locator(".say textarea");
+  const ipaChip = page.getByRole("button", { name: "Text is IPA" });
+  const SHELLS = "She sells sea shells by the sea shore.";
+  await ipaChip.click();
+  await examples.selectOption({ label: SHELLS });
+  const picked = { box: await sayBox.inputValue(), menu: await examples.inputValue(), ipa: await ipaChip.getAttribute("aria-pressed") };
+  await sayBox.fill("Something else.");
+  await examples.selectOption({ label: SHELLS });
+  const again = await sayBox.inputValue();
+  logs.push(`[${tag}] example picked: ${JSON.stringify(picked)}, picked again: "${again}"`);
+  if (picked.box !== SHELLS || picked.menu !== "" || picked.ipa !== "false" || again !== SHELLS) errors.push(`[${tag}] the Examples menu didn't put the phrase in as text and reset (${JSON.stringify(picked)}, again "${again}")`);
   await page.locator("button.ipa", { hasText: "ʃ" }).first().click();
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${outDir}/${tag}-4-pad.png` });
