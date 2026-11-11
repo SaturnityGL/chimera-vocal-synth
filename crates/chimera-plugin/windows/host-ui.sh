@@ -42,7 +42,8 @@ nag_open() { [ -n "$(ui nag)" ]; }
 install_reaper() {
   curl -fsSL -o "$work/reaper-install.exe" "https://www.reaper.fm/files/7.x/reaper${reaper_version}_x64-install.exe"
   echo "$reaper_sha  $work/reaper-install.exe" | sha256sum -c -
-  "$work/reaper-install.exe" /S
+  # Git Bash would turn /S into a path, and the installer would wait for someone to click through it
+  MSYS_NO_PATHCONV=1 "$work/reaper-install.exe" /S
   for _ in $(seq 1 60); do
     [ -e "$reaper_exe" ] && break
     sleep 1

@@ -78,8 +78,13 @@ pub fn after_build(webview: &WebView) {
 }
 
 /// The view changed size: the webview follows it by itself, and the page's zoom follows here.
-pub fn follow(webview: &WebView, _view: View, size: (u32, u32)) {
+pub fn follow(webview: &WebView, _view: View, size: (u32, u32), _scale: f64) {
     let _ = webview.zoom(page_zoom(size));
+}
+
+/// macOS keeps the page's scale itself.
+pub fn monitor_dpi(_view: View) -> u32 {
+    0
 }
 
 // CoreFoundation's run loop timer. A view of ours watching for its window would need a class of ours,
@@ -151,7 +156,7 @@ impl Drop for Keep {
 }
 
 /// Builds the webview into `webview`, now or once the host's view is in a window.
-pub fn open(view: View, size: (u32, u32), bridge: Arc<Bridge>, webview: Rc<RefCell<Option<WebView>>>) -> Keep {
+pub fn open(view: View, size: (u32, u32), _scale: f64, bridge: Arc<Bridge>, webview: Rc<RefCell<Option<WebView>>>) -> Keep {
     if in_window(view) {
         *webview.borrow_mut() = super::build(view, size, &bridge, None);
         return Keep(None);

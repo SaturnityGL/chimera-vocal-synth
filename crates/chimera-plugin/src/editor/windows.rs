@@ -12,6 +12,7 @@ use nih_plug::prelude::ParentWindowHandle;
 use raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, Win32WindowHandle, WindowHandle};
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
 use windows_sys::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
+use windows_sys::Win32::UI::HiDpi::GetDpiForWindow;
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetClientRect, GetCursorPos};
 use wry::dpi::{PhysicalPosition, PhysicalSize};
 use wry::{Rect, WebContext, WebView};
@@ -84,20 +85,34 @@ pub fn fit_screen((width, height): (u32, u32), scale: f64) -> (u32, u32) {
 
 pub fn after_build(_webview: &WebView) {}
 
-/// The host's window changed size: WebView2 doesn't follow by itself, and the page's zoom follows too.
-pub fn follow(webview: &WebView, view: View, size: (u32, u32)) {
+/// The monitor's DPI, which WebView2 scales the page by (96 is 100 %).
+pub fn monitor_dpi(view: View) -> u32 {
+    // SAFETY: a window, alive while the editor is open
+    unsafe { GetDpiForWindow(view.get() as HWND) }.max(1)
+}
+
+/// The host's window changed size, or moved to a monitor with another scale. WebView2 doesn't follow
+/// its parent by itself, so it fills the window here, in physical pixels. It scales the page by the
+/// monitor's DPI, and the host may have chosen another scale for the editor (100 % on a 150 % monitor,
+/// say), so the zoom undoes the difference as well as fitting the layout.
+pub fn follow(webview: &WebView, view: View, size: (u32, u32), scale: f64) {
     let (w, h) = client(view);
     let _ = webview.set_bounds(Rect { position: PhysicalPosition::new(0, 0).into(), size: PhysicalSize::new(w, h).into() });
-    let _ = webview.zoom(page_zoom(size));
+    let _ = webview.zoom(page_zoom(size) * scale * 96.0 / monitor_dpi(view) as f64);
 }
 
 /// What the open editor holds on to here: the webview's context, which says where WebView2 keeps its
 /// data. By default that's beside the host's executable, which a host in Program Files can't write to.
 pub struct Keep(#[allow(dead_code)] WebContext);
 
-pub fn open(view: View, size: (u32, u32), bridge: Arc<Bridge>, webview: Rc<RefCell<Option<WebView>>>) -> Keep {
+pub fn open(view: View, size: (u32, u32), scale: f64, bridge: Arc<Bridge>, webview: Rc<RefCell<Option<WebView>>>) -> Keep {
     let folder = std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("CHIMERA").join("WebView2"));
     let mut context = WebContext::new(folder);
-    *webview.borrow_mut() = super::build(view, size, &bridge, Some(&mut context));
+    let built = super::build(view, size, &bridge, Some(&mut context));
+    // wry turned the logical bounds into pixels by the monitor's DPI, not the host's scale
+    if let Some(built) = &built {
+        follow(built, view, size, scale);
+    }
+    *webview.borrow_mut() = built;
     Keep(context)
 }
