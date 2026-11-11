@@ -253,6 +253,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tiny_http",
+ "windows-sys 0.61.2",
  "wry",
 ]
 

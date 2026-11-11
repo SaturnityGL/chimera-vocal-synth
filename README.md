@@ -34,8 +34,8 @@ The AudioWorklet needs a secure context, so open it on localhost or over HTTPS (
 
 ## As a plugin
 
-Early: a CLAP, VST3 and AU instrument for macOS, with the same UI in a webview, in a window you can
-resize. MIDI notes sing the lyrics, one syllable per note (Sing); play the posture you've set (Play); say
+Early: a CLAP, VST3 and AU instrument for macOS, and CLAP and VST3 for Windows, with the same UI in
+a webview, in a window you can resize. Linux builds run in CI but have no editor yet. MIDI notes sing the lyrics, one syllable per note (Sing); play the posture you've set (Play); say
 the next line of text (Speak); or play mouth drums and hum, with a beat that follows the host's tempo
 (Beatbox). Everything saves with the project, and the voice parameters can be automated. On a Mac, with
 Xcode's command line tools as well as the above:
@@ -50,6 +50,7 @@ Or, with GitHub's `gh` logged in, install CI's newest build without building any
 crates/chimera-plugin/macos/update.sh
 ```
 
+On Windows, in Git Bash with Rust's MSVC toolchain: `crates/chimera-plugin/windows/build.sh --install`.
 Builds aren't signed yet. See [docs/plugin.md](docs/plugin.md).
 
 Offline renders and measurement:

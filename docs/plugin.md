@@ -4,7 +4,7 @@
 inside FL Studio on macOS: typing, parameters both ways, two instances, reopening the window.*
 
 The goal of the MVP: sing lyrics from a DAW's piano roll with the real React UI, as CLAP, VST3 and
-AU on macOS, under the repo's MIT licence.
+AU on macOS, under the repo's MIT licence. Windows and Linux came after (see "Systems").
 
 ## What the MVP is
 
@@ -22,8 +22,47 @@ MIT-licensed VST3 SDK and Apple's AudioUnitSDK) make one dylib export CLAP, VST3
 copies the same fat binary into `CHIMERA.clap`, `CHIMERA.vst3` and `CHIMERA.component`. nih-plug's
 own VST3 export pulls in GPLv3 `vst3-sys`, so `default-features = false` turns it off.
 
-CI validates with clap-validator, `auval` and pluginval. The workflow file only calls scripts in
-`crates/chimera-plugin/macos`, because the agents' GitHub App can't edit `.github/workflows/`.
+CI validates with clap-validator, `auval` and pluginval. The workflow's jobs only call scripts in
+`crates/chimera-plugin/<system>`, because the agents' GitHub App can't edit `.github/workflows/`:
+`crates/chimera-plugin/plugin.yml` is the copy the owner pastes.
+
+## Systems
+
+| | Formats | Editor | Built by |
+|---|---|---|---|
+| macOS 11+, Apple silicon and Intel | CLAP, VST3, AU | WKWebView | `macos/build.sh` |
+| Windows 10 and 11, x64 | CLAP, VST3 | WebView2 | `windows/build.sh`, in Git Bash |
+| Linux, x86_64 | CLAP, VST3 | none yet | `linux/build.sh` |
+
+The editor's code is shared (`src/editor/mod.rs`), and what differs is in `src/editor/macos.rs` and
+`src/editor/windows.rs`: the host's window handle, the view's size, the pointer, the screen, and how
+the webview follows the window.
+
+**Windows.** The host sizes windows in physical pixels and tells the editor its scale
+(`set_scale_factor` says yes there, and no on macOS, which scales by itself), so sizes stay logical and
+are multiplied at the edges. WebView2 comes with Windows 10 and 11. It keeps its data beside the host's
+executable unless told otherwise, which a host in Program Files can't write to, so it's told
+`%LOCALAPPDATA%\CHIMERA\WebView2`. Unlike WKWebView it doesn't follow its parent's size, so `tick`
+sets its bounds when the window changes. wry serves the custom protocol as `http://chimera.localhost/`
+there, which the navigation handler allows. The screen that the window has to fit is the pointer's,
+because the host asks the size before there's a window.
+
+## Linux
+
+Linux builds load, sing and pass the host test, but they have no editor yet. Modes, lyrics and the rest
+of the settings are in the editor, so a Linux build is for CI, not for anyone to use.
+
+A webview on Linux is WebKitGTK, which needs GTK running on its thread, and that's the problem:
+
+- **On the host's thread:** GTK only runs there if the host runs it. REAPER does, through its own GTK;
+  Bitwig, a Java program, doesn't, and nih-plug gives an editor no timer to run it with.
+- **On a thread of the plugin's own**, as nih-plug's other editors do on Linux: GTK isn't thread-safe,
+  and REAPER's own GTK is already on its main thread.
+- **In a process of its own (likely the way):** a small helper runs WebKitGTK, embeds its window in the
+  host's by X11 window ID (wry's `build_as_child` already does this across processes), and talks to the
+  plugin over a local socket, as `examples/ui_harness.rs` does over HTTP. Its cost: a second executable
+  to ship and find beside the plugin, WebKitGTK for users to install, X11 only (XWayland included), and
+  calls into the host from a thread that isn't the host's, which nih-plug's other editors already make.
 
 ## Threads
 
@@ -379,9 +418,12 @@ making no other network use) and a signed installer: see Later.
 
 ## Testing in a host
 
-GitHub's Macs have a display, and their image lets scripts capture it and post clicks, so CI runs the real
-plugin in a real host: REAPER, driven by `macos/host-test.sh`, with `host-test/host_test.lua` inside it
-and `host-test/check.ts` judging what comes out. It takes about seven minutes of a CI run, and fails it.
+GitHub's runners have a display, and their images let scripts capture it and post clicks, so CI runs the
+real plugin in a real host: REAPER, driven by `host-test/run.sh`, with `host-test/host_test.lua` inside it
+and `host-test/check.ts` judging what comes out. What differs by system (installing REAPER, the screen,
+the mouse, its dialogs) is in `<system>/host-ui.sh`: System Events and `cliclick` on macOS, PowerShell
+(`windows/ui.ps1`) on Windows, and on Linux a virtual display with no editor stage. On a Mac it takes
+about seven minutes of a CI run, and it fails the run.
 
 - **Each format, as a user would:** it loads, each mode renders, notes come out in tune, Beatbox's kicks and
   pads land on the grid after the host's delay compensation, a hum sits two octaves down, and the formats
@@ -400,10 +442,11 @@ and `host-test/check.ts` judging what comes out. It takes about seven minutes of
 - **Rendering at the device's rate.** REAPER prepares plugins at the sound device's 48 kHz, so a bounce at
   another rate changes Beatbox's latency in samples, and a VST3 is then restarted partway through. It cost
   one kick its tail. Likely only that bounce at another rate is affected, and it isn't fixed.
-- **Screenshots go to the log** as base64 between `=== screenshot` lines, because the workflow uploads its
-  artifacts before this runs. Read them: a check can't tell a good-looking page from a bad one.
-- **To develop it**, REAPER for Linux runs the same Lua under `xvfb-run`, with no editor, against
-  `target/release/libchimera_plugin.so` copied to `~/.clap/CHIMERA.clap`.
+- **Screenshots and renders** are uploaded as each job's `chimera-host-test-<system>` artifact, and on macOS
+  also go to the log as base64 between `=== screenshot` lines. Read them: a check can't tell a
+  good-looking page from a bad one.
+- **To develop it** on Linux, `linux/build.sh --install` and then `host-test/run.sh` run what CI runs, with
+  `xvfb-run` and REAPER for Linux's GTK and ALSA libraries installed.
 
 It doesn't cover: looping playback in a host (the beat player's own tests do), what it sounds like,
 dropouts on real hardware, or other hosts. FL Studio in particular still needs one look.
@@ -423,7 +466,7 @@ if a dependency has no licence, or only a GPL one.
   keeps moving. FL Studio's Smart Disable covers much of this meanwhile.
 - **Lookahead in Sing.** A vowel should land on the beat with its consonants ahead of it. Beatbox's
   reported latency shows how; live playing wouldn't want it, so in Sing it would be a toggle.
-- Windows (WebView2 through wry). Most FL Studio users are on Windows.
+- An editor on Linux (see "Linux").
 - Bestiary.
 - Sustain pedal, mod wheel and other controllers.
 - Dragging the host's window border (needs `can_resize` in nih-plug: a fork or an upstream change).

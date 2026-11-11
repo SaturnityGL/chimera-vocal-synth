@@ -3,7 +3,9 @@
  * sound when they should, on the right pitch, and on the grid once the host has compensated for the
  * reported delay? Prints every number, so a failure says how far off it was.
  *
- *   bun crates/chimera-plugin/host-test/check.ts <folder> <formats, as CLAP,VST3,AU> [--editor]
+ *   bun crates/chimera-plugin/host-test/check.ts <folder> <formats, as CLAP,VST3,AU> [--editor --chrome <n>]
+ *
+ * --chrome: the host's title bar and toolbar above the editor, in the window bounds the driver records.
  *
  * Every format has to have got through every case: a run that did nothing mustn't pass. AU's cases
  * that need its state set from a script are left out, because REAPER can't.
@@ -23,12 +25,13 @@ const BEAT_LATENCY = 0.18;
  * in a different state each time.
  */
 const SAME_SOUND = 6;
-/** How far macos/host-test.sh drags the grip inwards (points), and what the window may differ by. */
+/** How far host-test/run.sh drags the grip inwards (points), and what the window may differ by. */
 const GRIP_DRAG = [100, 60], GRIP_SLACK = 3;
 /** The host rounds the window's size (points). */
 const WINDOW_SLACK = 2;
-/** REAPER's title bar and toolbar above the editor (points): CHROME in macos/host-test.sh. */
-const REAPER_CHROME = 54;
+/** REAPER's title bar and toolbar above the editor, in the bounds the driver records: CHROME in its host-ui.sh. */
+const chromeAt = process.argv.indexOf("--chrome");
+const REAPER_CHROME = chromeAt > 0 ? Number(process.argv[chromeAt + 1]) : 0;
 /** Above this a stretch is sounding, and below SILENT it isn't. */
 const SOUNDING = 1e-3, SILENT = 1e-4;
 

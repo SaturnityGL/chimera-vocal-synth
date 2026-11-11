@@ -1,6 +1,6 @@
 -- CHIMERA in a real host. REAPER runs this at start-up (as Scripts/__startup.lua): it loads each
 -- format, renders what each mode does to files for check.ts to judge, then opens each editor for
--- the script that started it, which can see and click (macos/host-test.sh on CI).
+-- the script that started it, which can see and click (host-test/run.sh on CI).
 -- See docs/plugin.md, "Testing in a host".
 --
 -- Environment: CHIMERA_TEST_OUT (a folder), CHIMERA_TEST_FORMATS ("CLAP,VST3,AU"),

@@ -1,5 +1,6 @@
 # Copy of .github/workflows/plugin.yml: the agents' GitHub App can't write that folder, so changes
-# are staged here for the owner to paste. It only calls scripts, so it should rarely change.
+# are staged here for the owner to paste. Each job only calls scripts in crates/chimera-plugin, so
+# it should rarely change.
 name: plugin
 
 on:
@@ -69,8 +70,80 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: chimera-host-test
+          name: chimera-host-test-macos
           path: |
             target/host-test/*.wav
             target/host-test/*.jpg
+          if-no-files-found: ignore
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: bash
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test, build, validate, and play it in REAPER
+        run: crates/chimera-plugin/windows/ci.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chimera-plugin-windows
+          path: out/CHIMERA-windows.zip
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chimera-host-test-windows
+          path: |
+            target/host-test/*.wav
+            target/host-test/*.jpg
+            target/host-test/*.log
+          if-no-files-found: ignore
+
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test, build, validate, and play it in REAPER
+        run: crates/chimera-plugin/linux/ci.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chimera-plugin-linux
+          path: out/CHIMERA-linux.tar.gz
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chimera-host-test-linux
+          path: |
+            target/host-test/*.wav
+            target/host-test/*.log
           if-no-files-found: ignore

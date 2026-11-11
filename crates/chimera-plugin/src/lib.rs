@@ -1,6 +1,6 @@
 //! CHIMERA as an audio plugin: MIDI notes sing, speak or beatbox. nih-plug makes it a
-//! CLAP plugin and `clap-wrapper` adds VST3 and AUv2 to the same binary. On macOS the editor is a
-//! system webview (WKWebView) showing the React UI. See docs/plugin.md.
+//! CLAP plugin and `clap-wrapper` adds VST3 and AUv2 to the same binary. The editor is the system's
+//! webview showing the React UI: WKWebView on macOS, WebView2 on Windows. See docs/plugin.md.
 
 use std::io::Read;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -15,7 +15,7 @@ use nih_plug::prelude::*;
 pub mod bridge;
 pub mod close_mic;
 pub mod core;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod editor;
 pub mod speech;
 
@@ -181,7 +181,7 @@ impl Plugin for Chimera {
         self.params.clone()
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         Some(Box::new(editor::WebEditor::new(self.params.clone(), self.shared.clone())))
     }

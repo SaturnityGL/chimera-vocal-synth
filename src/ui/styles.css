@@ -2872,7 +2872,7 @@ html.plugin-page::-webkit-scrollbar {
 
 /* in from the corner, because macOS keeps the last dozen points or so of a resizable window's corner
    for resizing that window, and a drag there never reaches the page; larger than what's drawn, because
-   it shrinks with the page's zoom (measured in REAPER by crates/chimera-plugin/macos/host-test.sh) */
+   it shrinks with the page's zoom (measured in REAPER by crates/chimera-plugin/host-test/run.sh) */
 .resize-grip {
   position: fixed;
   right: 6px;
