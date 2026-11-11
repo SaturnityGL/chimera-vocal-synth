@@ -93,11 +93,19 @@ def render(lines, body, stem):
 
 
 def load(path):
+    """The render at the recogniser's 16 kHz. It is low-passed first (a windowed sinc, cut at
+    7.6 kHz): the renders are not band-limited, and taking every third sample alone folded the
+    frication above 8 kHz (s, f, sh) back into the band the recogniser hears."""
     w = wave.open(path)
     x = np.frombuffer(w.readframes(w.getnframes()), "<i2").astype(np.float32) / 32768
     sr = w.getframerate()
-    # 48 kHz → 16 kHz (the renders are band-limited well below 8 kHz)
-    return x[:: sr // 16000].copy() if sr % 16000 == 0 else x
+    if sr == 16000:
+        return x
+    assert sr % 16000 == 0, f"{path}: {sr} Hz"
+    fc, half = 7600 / sr, 96
+    n = np.arange(-half, half + 1)
+    h = 2 * fc * np.sinc(2 * fc * n) * np.blackman(2 * half + 1)
+    return np.convolve(x, (h / h.sum()).astype(np.float32), "same")[:: sr // 16000].copy()
 
 
 def edits(r, h):
@@ -325,6 +333,9 @@ def main():
     for lang in langs:
         rec = sherpa_onnx.OfflineRecognizer.from_sense_voice(model=f"{MODEL}/model.int8.onnx", tokens=f"{MODEL}/tokens.txt", language=lang, use_itn=False, num_threads=8)
         units_of = scorer(lang)
+        if syllable_count(TEXTS[lang][0]) == 0:
+            print(f"{lang}: the CLI's front ends read none of these lines (no front end for this script yet); skipped", flush=True)
+            continue
         variants = [("real", TEXTS[lang])] + [(f"scramble{s}", scramble(lang, TEXTS[lang], 100 + s)) for s in range(shuffles)]
         for body in bodies:
             for name, lines in variants:
@@ -346,6 +357,7 @@ def main():
     with open(os.path.join(out, "scramble.json"), "w") as f:
         json.dump(results, f, ensure_ascii=False, indent=1)
     print("\nlang  voice   real   scrambled (mean)")
+    langs = [lang for lang in langs if any(x["lang"] == lang for x in results)]
     for lang in langs:
         for body in bodies:
             rs = [x for x in results if x["lang"] == lang and x["body"] == body]
