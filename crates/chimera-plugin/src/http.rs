@@ -6,8 +6,9 @@ use tiny_http::{Header, Request, Response};
 
 use crate::bridge::Bridge;
 
-/// Makes the page think it's in the plugin: `window.ipc` is what wry defines in a webview.
-pub const IPC_SHIM: &str = "<script>window.ipc={postMessage:(m)=>fetch('/ipc',{method:'POST',body:m,keepalive:true})}</script>";
+/// Makes the page think it's in the plugin: `window.ipc` is what wry defines in a webview. It sends the
+/// token the page was opened with (`?k=`), as `src/ui/pluginState.ts` does for its own requests.
+pub const IPC_SHIM: &str = "<script>window.ipc={postMessage:(m)=>fetch('/ipc',{method:'POST',body:m,keepalive:true,headers:{'X-Chimera-Token':new URLSearchParams(location.search).get('k')||''}})}</script>";
 
 pub fn header(name: &str, value: &str) -> Header {
     Header::from_bytes(name.as_bytes(), value.as_bytes()).expect("an ASCII header")

@@ -62,15 +62,19 @@ process could embed WebKitGTK in the DAW's window by its X11 window ID, showing 
 at the cost of a second executable to ship, WebKitGTK for users to install, and X11 only. A browser
 needs none of that, and works on Wayland.
 
-- **Who can reach it:** the address carries a random token, which the page sends back as a cookie named
-  for its port (cookies don't tell ports apart), and a request must name `127.0.0.1:<port>` as its host,
-  so a web page can't reach it by pointing a name of its own at 127.0.0.1.
+- **Who can reach it:** the page's own files are public (they're the open-source site), but anything
+  about the plugin needs the random token in the page's address, which the page keeps and sends as a
+  header: a cookie would go to every service on 127.0.0.1, whatever its port. A request must also name
+  `127.0.0.1:<port>` as its host, so a web page can't reach it by pointing a name of its own at
+  127.0.0.1, and the page asks browsers not to pass its address on as a referrer.
 - **Threads:** the server's thread makes the bridge's calls into the host, as nih-plug's own editors on
-  Linux do from their window's thread.
+  Linux do from their window's thread. Closing the window doesn't wait for that thread (a request half
+  sent could keep it, and the host's GUI thread with it): a gate cuts it off from the host instead.
 - **The page knows** (the `in-browser` class): no grip, since the browser's window resizes itself.
 - **A server that's gone** can leave a request hanging rather than failing, so the page's requests time
   out, and after 3 s without an answer it says so and polls once a second until there is one. That also
-  covers a host whose main thread is busy, on the other systems.
+  covers a host whose main thread is busy, on the other systems. The first request has no timeout, as
+  nothing would try it again.
 - **Tested:** the token check by unit tests. In REAPER for Linux here, by hand: the plugin opened its
   page, a click on Beatbox reached it, and closing the window stopped the server and the page said so.
   The host test on CI renders on Linux, and doesn't drive the browser.

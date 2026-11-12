@@ -207,6 +207,11 @@ impl Bridge {
         }
     }
 
+    /// Whether a path is one of the page's own files: the open-source site, not the plugin's state.
+    pub fn is_asset(path: &str) -> bool {
+        path == "/" || ASSETS.iter().any(|(p, _, _)| *p == path)
+    }
+
     fn asset(path: &str) -> Reply {
         let path = if path == "/" { "/index.html" } else { path };
         match ASSETS.iter().find(|(p, _, _)| *p == path) {

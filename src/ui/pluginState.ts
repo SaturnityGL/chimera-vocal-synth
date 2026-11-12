@@ -43,18 +43,23 @@ interface SpeechLines {
   lines: string[];
 }
 
-async function request(path: string): Promise<Response> {
+/** In a browser, on Linux, the page was opened with a token, which the plugin wants with each request. */
+const TOKEN = new URLSearchParams(location.search).get("k");
+const HEADERS: HeadersInit = TOKEN ? { "X-Chimera-Token": TOKEN } : {};
+
+/** null: no timeout. Not Infinity, which setTimeout takes as 0. */
+async function request(path: string, timeout: number | null = REQUEST_TIMEOUT): Promise<Response> {
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT);
+  const timer = timeout === null ? undefined : setTimeout(() => abort.abort(), timeout);
   try {
-    return await fetch(path, { cache: "no-store", signal: abort.signal });
+    return await fetch(path, { cache: "no-store", headers: HEADERS, signal: abort.signal });
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const r = await request(path);
+async function getJson<T>(path: string, timeout: number | null = REQUEST_TIMEOUT): Promise<T> {
+  const r = await request(path, timeout);
   if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
   return (await r.json()) as T;
 }
@@ -192,7 +197,8 @@ export async function attachToPlugin(): Promise<void> {
   // for the end-to-end test: what the piano roll holds isn't in the DOM
   (window as unknown as { __chimeraRoll: typeof roll }).__chimeraRoll = roll;
   document.documentElement.classList.add("plugin-page");
-  adopt(await getJson<Snapshot>("/state"));
+  // no timeout: there's no loop yet to try again, and a host busy loading a project may take a while
+  adopt(await getJson<Snapshot>("/state", null));
   analysers = engine.pluginAnalysers();
   requestAnimationFrame(loop);
 }
