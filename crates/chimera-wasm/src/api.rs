@@ -118,6 +118,8 @@ fn dispatch(st: &mut State, req: &Value) -> Res {
         }
         // ---------------------------------------------------------------- text → phonemes
         "tokenizeIpa" => to_json(&ipa::tokenize_ipa(&arg::<String>(req, "text")?)),
+        // what tokenizeIpa leaves out of the text without a word: { unknown, noSound, ignoredMarks }
+        "skippedIpa" => to_json(&ipa::skipped_ipa(&arg::<String>(req, "text")?)),
         "g2pLoad" => {
             st.g2p.load_dict(&arg::<String>(req, "text")?);
             Ok(json!(true))

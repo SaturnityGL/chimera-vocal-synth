@@ -25,7 +25,9 @@ for tests and the `chimera` CLI.
 - **Play**: drag the tongue, lips and jaw in a live cutaway of the head; vowel pad, encoders,
   computer keyboard and Web MIDI.
 - **Speak**: English text (CMUdict with a letter-to-sound fallback) or IPA, turned into
-  gestures and prosody, with the gestural score and a consonant chart on screen.
+  gestures and prosody, with the gestural score and a consonant chart on screen. In IPA mode a
+  notice under the box lists the symbols and marks the voice doesn't say (`chimera render speech`
+  prints the same as warnings).
 - **Sing**: a pitch roll with lyrics per note; consonants land before the beat. Lyrics can be
   English or Korean (Hangul: one block per note, with Korean sound rules); each language is a
   front end ([docs/language-front-ends.md](docs/language-front-ends.md)).

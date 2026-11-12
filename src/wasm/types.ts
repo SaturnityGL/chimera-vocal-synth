@@ -167,6 +167,16 @@ export interface Segment {
   breathy?: boolean;
 }
 
+/** What the engine will not say as written in a piece of IPA text (see `skippedIpa`). */
+export interface SkippedIpa {
+  /** symbols it does not know (a tone letter, a click, a capital, a typo) */
+  unknown: string[];
+  /** symbols it knows but has no sound for (a vowel letter without a calibrated vowel) */
+  noSound: string[];
+  /** letters written with a mark it does not model or cannot apply there: the letter is said, the mark is not */
+  ignoredMarks: string[];
+}
+
 export interface PlannedSegment {
   ipa: string;
   t0: number;

@@ -5,6 +5,7 @@ import { tokenizeIpa } from "../wasm/engine.ts";
 import { planPhrases, type Plan, type Segment } from "../wasm/engine.ts";
 import { engine } from "../audio/AudioEngine.ts";
 import type { Gesture } from "../wasm/types.ts";
+import { ipaPhraseTexts } from "./skipped.ts";
 import { wordSpans, type WordSpan } from "./words.ts";
 
 export const g2p = new EnglishG2P();
@@ -40,11 +41,7 @@ export function currentPlan(): SpokenPlan | null {
 }
 
 export function ipaToPhrases(text: string): Phrase[] {
-  return text
-    .split(/[|.?!]+/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => ({ segments: tokenizeIpa(p), intonation: "statement" as const, pause: 0.3, words: [] }));
+  return ipaPhraseTexts(text).map((p) => ({ segments: tokenizeIpa(p), intonation: "statement" as const, pause: 0.3, words: [] }));
 }
 
 export function transcribe(phrases: { segments: Segment[]; intonation?: string }[]): string {

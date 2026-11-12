@@ -13,7 +13,7 @@ use chimera::creatures::{CREATURES, creature_by_id};
 use chimera::math::{js_max, js_min, js_round, log10};
 use chimera::phonetics::beatbox::{BEAT_PRESETS, BEAT_SOUNDS, BeatStep, beat_ready, parse_beat};
 use chimera::phonetics::english::EnglishG2P;
-use chimera::phonetics::ipa::tokenize_ipa;
+use chimera::phonetics::ipa::{skipped_ipa, tokenize_ipa};
 use chimera::phonetics::planner::{
     PhraseInput, PlanOptions, plan_phrases, plan_utterance, vowel_table,
 };
@@ -92,6 +92,11 @@ pub fn speech(ctx: &Ctx, a: &[String]) -> Result<(), String> {
     voice.set_source(&SourcePatch::f0(f0));
     let mut marks: Vec<(f64, String)> = Vec::new();
     let mut t0 = 0.05;
+    // what the engine will not say as typed, one warning line per kind on stderr (the render is unchanged)
+    // (the "/" between utterances is a transcription delimiter, which skipped_ipa does not report)
+    for line in skipped_ipa(&text).warnings() {
+        eprintln!("warning: {line}");
+    }
     for u in text.split('/').map(str::trim).filter(|u| !u.is_empty()) {
         let segs = tokenize_ipa(u);
         let plan = plan_utterance(

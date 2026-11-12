@@ -1914,6 +1914,24 @@ input[type="range"]::-moz-range-thumb {
   white-space: nowrap;
 }
 
+/* the transcription, and under it what IPA mode did not say */
+.say-read {
+  flex: 1;
+  min-width: 0;
+}
+
+.say-skipped p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  word-break: break-word;
+}
+
+.say-skipped-sym {
+  color: var(--text);
+  letter-spacing: 0.04em;
+}
+
 .vowel-pick {
   display: flex;
   gap: 4px;

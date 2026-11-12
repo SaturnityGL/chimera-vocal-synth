@@ -120,6 +120,27 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.locator("button.ipa", { hasText: "ʃ" }).first().click();
   await page.waitForTimeout(700);
   await page.screenshot({ path: `${outDir}/${tag}-4-pad.png` });
+  // IPA mode tells the person which symbols the voice will not say (it used to drop them without a
+  // word: upstream issue 52), as they type; plain text and clean IPA get no notice
+  const notice = page.locator(".say-skipped");
+  const box_ = page.getByRole("textbox", { name: /to speak/ });
+  const noticeText = async () => ((await notice.textContent()) ?? "").trim();
+  if ((await notice.getAttribute("aria-live")) !== "polite") errors.push(`[${tag}] the skipped-symbols notice is not a polite live region`);
+  if (await noticeText()) errors.push(`[${tag}] the skipped-symbols notice shows with IPA mode off: ${await noticeText()}`);
+  await ipaChip.click(); // IPA mode on (a toggle button)
+  await box_.fill("ɕiɛ˥˩");
+  const shown = await noticeText();
+  logs.push(`[${tag}] skipped-symbols notice: ${shown}`);
+  if (!/Not said/.test(shown) || !shown.includes("˥") || !shown.includes("˩")) errors.push(`[${tag}] typing IPA with tone letters showed no notice naming them: "${shown}"`);
+  await page.screenshot({ path: `${outDir}/${tag}-4-speak-skipped.png`, fullPage: true });
+  await box_.fill("ˈhɛloʊ");
+  if (await noticeText()) errors.push(`[${tag}] the notice stayed for IPA the voice says: ${await noticeText()}`);
+  await box_.fill("ɕiɛ˥˩");
+  await box_.fill("");
+  if (await noticeText()) errors.push(`[${tag}] clearing the box left the notice: ${await noticeText()}`);
+  await box_.fill("ɕiɛ˥˩");
+  await ipaChip.click(); // and off
+  if (await noticeText()) errors.push(`[${tag}] turning IPA mode off left the notice: ${await noticeText()}`);
   // sing mode: a key sings the marked syllable and moves the cursor; legato; a demo song
   await page.getByRole("radio", { name: "Sing" }).click();
   await page.waitForTimeout(600);

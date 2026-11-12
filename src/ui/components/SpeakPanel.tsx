@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { skippedLines } from "../skipped.ts";
 import { useStore } from "../store.ts";
 import { speakText, speakPhrases, stopSpeaking, onPlan, currentPlan, spokenWordNow, speakingNow } from "../speech.ts";
 import { mouthWords } from "../mouthWords.ts";
@@ -141,6 +142,8 @@ export function SpeakRight() {
   const [vowel, setVowel] = useState("ɑ");
   const speaking = useSpeaking();
   useEffect(() => onPlan((p) => setTrans(p?.transcription ?? "")), []);
+  // in IPA mode: the symbols in the box that the voice will not say, updated as the text changes
+  const skipped = useMemo(() => (ipa ? skippedLines(text) : []), [ipa, text]);
 
   const speak = async () => {
     setBusy(true);
@@ -199,9 +202,18 @@ export function SpeakRight() {
             />
           </div>
           <div className="say-row">
-            <p className="transcription" aria-live="polite">
-              {trans ? `/${trans}/` : ""}
-            </p>
+            <div className="say-read">
+              <p className="transcription" aria-live="polite">
+                {trans ? `/${trans}/` : ""}
+              </p>
+              <div className="say-skipped" aria-live="polite">
+                {skipped.map((l) => (
+                  <p key={l.what}>
+                    {l.what}: <span className="say-skipped-sym">{l.symbols.join(" ")}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </Screen>
