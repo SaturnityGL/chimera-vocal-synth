@@ -407,6 +407,36 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.close();
 }
 
+// a recorder that fails to start (a type the browser claims but can't record): no clip, the Sing
+// button comes back, and the face shows its readouts again (the clean view used to stay on)
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.on("pageerror", (e) => errors.push(`[video-fails] pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    MediaRecorder.prototype.start = () => {
+      throw new Error("start refused by the test");
+    };
+    const w = window as unknown as { __texts: string[] };
+    w.__texts = [];
+    const fill = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (this: CanvasRenderingContext2D, t: string, ...a: [number, number]) {
+      if (w.__texts.length < 5000) w.__texts.push(t);
+      return fill.call(this, t, ...a);
+    };
+  });
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /^Video$/ }).click();
+  await page.waitForTimeout(2500);
+  await page.evaluate(() => ((window as unknown as { __texts: string[] }).__texts = []));
+  await page.waitForTimeout(500);
+  const readouts = await page.evaluate(() => (window as unknown as { __texts: string[] }).__texts.some((t) => /^RING O/.test(t)));
+  const sing = await page.getByRole("button", { name: /^(Sing|Stop)$/ }).count();
+  logs.push(`[video-fails] after a recorder that won't start: readouts ${readouts}, Sing button ${sing}`);
+  if (!readouts) errors.push("[video-fails] the face kept hiding its readouts after a recording failed to start");
+  if (!sing) errors.push("[video-fails] the Sing button didn't come back after a recording failed to start");
+  await page.close();
+}
+
 await run({ width: 1440, height: 980 }, "desktop");
 await run({ width: 390, height: 844 }, "mobile");
 await browser.close();

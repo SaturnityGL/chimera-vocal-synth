@@ -275,8 +275,17 @@ interface TuneRun {
   end: number;
   /** voice clock of plan time 0, once the worklet has it */
   offset: number | null;
-  /** when sung to the end (not when stopped) */
+  hooks: TuneHooks;
+}
+
+/** What a caller (Video) does as a tune's run begins, ends or is stopped. */
+export interface TuneHooks {
+  /** just before it's sent to the voice, after every wait (a throw: it isn't sung) */
+  onStart?: () => void;
+  /** sung to the end */
   onEnd?: () => void;
+  /** stopped before the end, from anywhere (Stop, another tune, the mode or body changing) */
+  onStop?: () => void;
 }
 
 let demoRun: TuneRun | null = null;
@@ -297,10 +306,10 @@ engine.onPlanned((m) => {
 
 /**
  * Sing the lyrics to tune `id` (after `ready`, e.g. audio startup, resolves; unless stopped
- * meanwhile), at the chosen tempo and key; empty lyrics sing it on "la". `onEnd` runs when it has
- * been sung to the end. Resolves whether it is singing.
+ * meanwhile), at the chosen tempo and key; empty lyrics sing it on "la". Resolves whether it is
+ * singing. `hooks` follow the run: onStart only once nothing can cancel it before it's sent.
  */
-export async function playTune(id: string, body: BodyMix, ready?: () => Promise<void>, onEnd?: () => void): Promise<boolean> {
+export async function playTune(id: string, body: BodyMix, ready?: () => Promise<void>, hooks: TuneHooks = {}): Promise<boolean> {
   const tune = TUNES.find((t) => t.id === id);
   if (!tune) return false;
   stopSinging();
@@ -321,6 +330,7 @@ export async function playTune(id: string, body: BodyMix, ready?: () => Promise<
   const bpm = tune.bpm * st.tempo;
   const t0 = 0.35;
   const plan = planSong(notes, { body, bpm, t0, vibrato: st.vibrato });
+  hooks.onStart?.();
   const beat = 60 / bpm;
   let t = t0;
   const times = notes.map((n): [number, number] => {
@@ -332,7 +342,7 @@ export async function playTune(id: string, body: BodyMix, ready?: () => Promise<
   const parent: number[] = [];
   notes.forEach((n, i) => parent.push(n.syl.melisma && i > 0 ? parent[i - 1] : i));
   const shown = parent.map((p) => written(notes[p].syl));
-  demoRun = { id: planId, times, midi: notes.map((n) => n.midi), text: notes.map((n) => n.syl.text), shown, parent, from: own.length ? from : from.map(() => -1), end: plan.end, offset: null, onEnd };
+  demoRun = { id: planId, times, midi: notes.map((n) => n.midi), text: notes.map((n) => n.syl.text), shown, parent, from: own.length ? from : from.map(() => -1), end: plan.end, offset: null, hooks };
   useSing.setState({ syllables: own, cursor: Math.min(st.cursor, Math.max(0, own.length - 1)), playing: tune.id, at: -1 });
   return true;
 }
@@ -347,6 +357,7 @@ function stopDemo(): void {
   roll.notes = roll.notes.filter((n) => !(n.demo && n.t0 > t));
   for (const n of roll.notes) if (n.demo && n.t1 !== null && n.t1 > t) n.t1 = t;
   endDemo();
+  d.hooks.onStop?.();
 }
 
 /** Call every frame while Sing mode is shown: follow the tune's progress. */
@@ -356,7 +367,7 @@ export function tickSinging(): void {
   const t = now() - d.offset;
   if (t > d.end + 0.4) {
     endDemo();
-    d.onEnd?.();
+    d.hooks.onEnd?.();
     return;
   }
   let k = -1;

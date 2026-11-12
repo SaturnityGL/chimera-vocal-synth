@@ -18,24 +18,42 @@ function pickType(): string | null {
   return TYPES.find((t) => MediaRecorder.isTypeSupported(t)) ?? null;
 }
 
-/** a clip is recording: the face screens draw the head without readouts or measurements */
-export const recording = { on: false };
+/**
+ * A clip is recording: the face screens draw the head without readouts or measurements. Owned by
+ * the clip that set it, so an earlier clip finishing late can't clear a newer one's.
+ */
+export const recording = {
+  owner: null as Clip | null,
+  get on(): boolean {
+    return this.owner !== null;
+  },
+};
 
 /** whether this browser can record a clip at all */
 export const canRecord = (): boolean => pickType() !== null;
 
 export class Clip {
   private frame = document.createElement("canvas");
-  private rec: MediaRecorder;
+  private rec!: MediaRecorder;
   private chunks: Blob[] = [];
   private raf = 0;
   private type: string;
   /** the frame's capture track: ours to stop (the audio track is the engine's, shared) */
-  private video: MediaStreamTrack[];
+  private video: MediaStreamTrack[] = [];
 
+  /** Starts recording; throws (having let go of everything it took) if the browser can't. */
   constructor(source: HTMLCanvasElement, audio: MediaStream) {
     this.type = pickType()!;
-    recording.on = true;
+    recording.owner = this;
+    try {
+      this.begin(source, audio);
+    } catch (e) {
+      this.release();
+      throw e;
+    }
+  }
+
+  private begin(source: HTMLCanvasElement, audio: MediaStream): void {
     this.frame.width = W;
     this.frame.height = H;
     const ctx = this.frame.getContext("2d")!;
@@ -54,12 +72,7 @@ export class Clip {
     };
     draw();
     this.video = this.frame.captureStream(30).getVideoTracks();
-    try {
-      this.rec = new MediaRecorder(new MediaStream([...this.video, ...audio.getAudioTracks()]), { mimeType: this.type, videoBitsPerSecond: 5_000_000 });
-    } catch (e) {
-      this.release();
-      throw e;
-    }
+    this.rec = new MediaRecorder(new MediaStream([...this.video, ...audio.getAudioTracks()]), { mimeType: this.type, videoBitsPerSecond: 5_000_000 });
     this.rec.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
     this.rec.start(500);
   }
@@ -67,6 +80,8 @@ export class Clip {
   /** Finish: the clip as a file named `name` (the extension is added). */
   stop(name: string): Promise<File> {
     cancelAnimationFrame(this.raf);
+    // the face screens show their measurements again now, not when the browser hands the file over
+    if (recording.owner === this) recording.owner = null;
     return new Promise((resolve) => {
       this.rec.onstop = () => {
         this.release();
@@ -85,7 +100,7 @@ export class Clip {
   }
 
   private release(): void {
-    recording.on = false;
+    if (recording.owner === this) recording.owner = null;
     cancelAnimationFrame(this.raf);
     for (const t of this.video) t.stop();
   }

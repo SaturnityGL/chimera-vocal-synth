@@ -141,7 +141,11 @@ function SingActions() {
   const [pending, setPending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [clip, setClip] = useState<{ file: File; url: string } | null>(null);
+  /** bumped by every start and stop: a start still waiting no longer counts */
   const request = useRef(0);
+  /** bumped by every Video: a clip still being finished for an earlier one isn't offered */
+  const take = useRef(0);
+  /** the clip recording now, if any (one at a time) */
   const recorder = useRef<Clip | null>(null);
   // the audio must be running: if it failed to start, nothing is planned and the error shows
   const ready = async () => {
@@ -153,49 +157,57 @@ function SingActions() {
     recorder.current = null;
     setRecording(false);
   };
-  // playTune waits for `ready` itself, so a stop meanwhile (body, mode, another tune) cancels it
+  // the clip's life is the tune's run: it starts as the tune is sent (never for a start that was
+  // cancelled), is saved when it's sung to the end, and goes when it's stopped from anywhere
   const sing = (id: string, record = false) => {
     const n = ++request.current;
+    const k = record ? ++take.current : take.current;
     drop();
     setPending(true);
-    let rec: Clip | null = null;
-    const prepare = !record
-      ? ready
-      : async () => {
-          await ready();
-          const canvas = document.querySelector<HTMLCanvasElement>(".screen.left canvas");
-          const audio = engine.recordStream();
-          if (n !== request.current || !canvas || !audio) throw new Error("not recording");
-          rec = recorder.current = new Clip(canvas, audio);
-          setRecording(true);
-          setClip(null);
+    let mine: Clip | null = null;
+    const hooks = !record
+      ? {}
+      : {
+          onStart: () => {
+            const canvas = document.querySelector<HTMLCanvasElement>(".screen.left canvas");
+            const audio = engine.recordStream();
+            if (n !== request.current || !canvas || !audio) throw new Error("not recording");
+            mine = recorder.current = new Clip(canvas, audio);
+            setRecording(true);
+            setClip(null);
+          },
+          onEnd: () => {
+            const c = mine;
+            if (!c || recorder.current !== c) return;
+            recorder.current = null;
+            setRecording(false);
+            void c.stop(`chimera-${id}`).then((file) => take.current === k && setClip({ file, url: URL.createObjectURL(file) }));
+          },
+          onStop: () => {
+            if (mine && recorder.current === mine) drop();
+          },
         };
-    const done = () => {
-      if (!rec || recorder.current !== rec) return;
-      recorder.current = null;
-      setRecording(false);
-      void rec.stop(`chimera-${id}`).then((file) => setClip({ file, url: URL.createObjectURL(file) }));
-    };
-    playTune(id, useStore.getState().body, prepare, done)
-      .then((on) => {
-        // stopped before it sang (the mode or body changed meanwhile): no clip
-        if (!on && rec && recorder.current === rec) drop();
-      })
+    playTune(id, useStore.getState().body, ready, hooks)
       .catch(() => {})
       .finally(() => request.current === n && setPending(false));
   };
   const stop = () => {
     request.current++; // the song getting ready, if any, no longer counts
     setPending(false);
+    stopSinging(); // its run's onStop drops the clip
     drop();
-    stopSinging();
   };
-  // stopped from elsewhere (another mode, another body): the clip stops with the song
-  useEffect(() => {
-    if (!playing && !pending && recorder.current) drop();
-  }, [playing, pending]);
   useEffect(() => () => void (clip && URL.revokeObjectURL(clip.url)), [clip]);
-  useEffect(() => () => recorder.current?.cancel(), []);
+  // leaving Sing: nothing still starting may begin a clip, and one recording goes
+  useEffect(
+    () => () => {
+      request.current++;
+      take.current++;
+      recorder.current?.cancel();
+      recorder.current = null;
+    },
+    [],
+  );
   const press = () => (playing || pending ? stop() : sing(tune));
   const share = clip && typeof navigator.canShare === "function" && navigator.canShare({ files: [clip.file] });
   return (

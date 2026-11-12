@@ -166,7 +166,7 @@ describe("Sing mode, live keys", () => {
     sing().setLyrics("my own words to sing");
     sing().setCursor(2);
     let ended = 0;
-    await playTune("joyful", MALE, () => Promise.resolve(), () => ended++);
+    await playTune("joyful", MALE, () => Promise.resolve(), { onEnd: () => ended++ });
     expect(sing().playing).toBe("joyful");
     expect(sing().lyrics).toBe("my own words to sing");
     expect(sing().syllables.map((s) => s.text)).toEqual(["my", "own", "words", "to", "sing"]);
@@ -182,7 +182,7 @@ describe("Sing mode, live keys", () => {
     expect(sing().playing).toBeNull();
     expect(ended).toBe(1);
     // stopped: not reported as ended
-    await playTune("joyful", MALE, () => Promise.resolve(), () => ended++);
+    await playTune("joyful", MALE, () => Promise.resolve(), { onEnd: () => ended++ });
     stopSinging();
     expect(ended).toBe(1);
     // words typed during a tune stop it
@@ -190,6 +190,32 @@ describe("Sing mode, live keys", () => {
     sing().setLyrics("typed during the song");
     expect(sing().playing).toBeNull();
     expect(sing().lyrics).toBe("typed during the song");
+  });
+
+  test("a run's hooks: no start for a run stopped while starting; a stop from anywhere is reported", async () => {
+    // Video's clip lives in these: it once began recording for a start that had been cancelled
+    voice = new WasmVoice(FS);
+    const log: string[] = [];
+    const hooks = { onStart: () => log.push("start"), onEnd: () => log.push("end"), onStop: () => log.push("stop") };
+    let go!: () => void;
+    const waiting = playTune("joyful", MALE, () => new Promise<void>((r) => (go = r)), hooks);
+    stopSinging(); // the mode or body changed while audio was starting
+    go();
+    expect(await waiting).toBe(false);
+    expect(log).toEqual([]);
+    await playTune("joyful", MALE, () => Promise.resolve(), hooks);
+    expect(log).toEqual(["start"]);
+    stopSinging();
+    expect(log).toEqual(["start", "stop"]);
+    // a start that throws (the browser can't record): nothing is sung
+    let scheduled = 0;
+    const schedule = engineStub.schedule as typeof fakeEngine.schedule;
+    engineStub.schedule = (plan: { gestures: Gesture[] }) => (scheduled++, schedule(plan));
+    const failed = await playTune("joyful", MALE, () => Promise.resolve(), { onStart: () => { throw new Error("no recorder"); } }).catch(() => "threw");
+    expect(failed).toBe("threw");
+    expect(scheduled).toBe(0);
+    expect(useSing.getState().playing).toBeNull();
+    engineStub.schedule = schedule;
   });
 
   test("empty lyrics sing the tune on la, highlighting nothing", async () => {

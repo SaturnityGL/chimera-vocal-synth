@@ -69,7 +69,8 @@ export function PianoRoll() {
       }
       if (pc === 0) {
         seg(ctx, left, yc + rowH / 2, w, yc + rowH / 2, V.frame, 1);
-        label(ctx, `${NAMES[pc]}${Math.floor(m / 12) - 1}`, 6, yc + 3, { size: 9, color: TEXT.secondary, ls: 0.1 });
+        // a C row at the very foot of the roll would be cut by its edge: its name waits until it's in
+        if (yc + 5 <= h) label(ctx, `${NAMES[pc]}${Math.floor(m / 12) - 1}`, 6, yc + 3, { size: 9, color: TEXT.secondary, ls: 0.1 });
       }
     }
     beam(ctx, dotted, V.frame, 1, { dash: [1, 5] });
