@@ -2863,10 +2863,14 @@ input[type="range"]::-moz-range-thumb {
 /* the page zooms out to fit (docs/plugin.md, "Window size"), but text shrinks less than the rest of it
    on a display that isn't Retina, so the wheel can still reach what's below; with a mouse macOS would
    show a scrollbar here, beside the grip */
-html.plugin-page {
+html.plugin-page:not(.in-browser) {
   scrollbar-width: none;
 }
-html.plugin-page::-webkit-scrollbar {
+html.plugin-page:not(.in-browser)::-webkit-scrollbar {
+  display: none;
+}
+/* on Linux the page is in a web browser (crates/chimera-plugin/src/browser.rs), whose window resizes itself */
+html.in-browser .resize-grip {
   display: none;
 }
 

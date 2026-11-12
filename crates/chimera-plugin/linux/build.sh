@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build CHIMERA.clap and CHIMERA.vst3 for Linux (x86_64) into target/bundled: the same .so in both.
-# There's no editor on Linux yet (docs/plugin.md, "Linux"), so no page to build first.
+# Its editor is the page in a web browser (docs/plugin.md, "Linux").
 #
 #   crates/chimera-plugin/linux/build.sh [--install] [--package]
 #   --install  copy into ~/.clap and ~/.vst3
@@ -8,7 +8,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 
+# The page the editor serves is embedded by build.rs, so it has to exist first.
 bun install --frozen-lockfile
+bun run build
 cargo build -p chimera-plugin --profile plugin
 
 out=target/bundled

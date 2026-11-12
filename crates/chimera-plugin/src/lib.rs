@@ -1,6 +1,7 @@
 //! CHIMERA as an audio plugin: MIDI notes sing, speak or beatbox. nih-plug makes it a
 //! CLAP plugin and `clap-wrapper` adds VST3 and AUv2 to the same binary. The editor is the system's
-//! webview showing the React UI: WKWebView on macOS, WebView2 on Windows. See docs/plugin.md.
+//! webview showing the React UI: WKWebView on macOS, WebView2 on Windows, and on Linux the user's web
+//! browser. See docs/plugin.md.
 
 use std::io::Read;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -13,10 +14,13 @@ use chimera::voice::human_voice::DEFAULT_SOURCE;
 use nih_plug::prelude::*;
 
 pub mod bridge;
+#[cfg(target_os = "linux")]
+mod browser;
 pub mod close_mic;
 pub mod core;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod editor;
+pub mod http;
 pub mod speech;
 
 use self::core::{Core, Event, MIN_SAMPLE_RATE, Prepared, Settings, Shared, Transport, VoiceParams};
@@ -184,6 +188,11 @@ impl Plugin for Chimera {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         Some(Box::new(editor::WebEditor::new(self.params.clone(), self.shared.clone())))
+    }
+
+    #[cfg(target_os = "linux")]
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        Some(Box::new(browser::BrowserEditor::new(self.params.clone(), self.shared.clone())))
     }
 
     // Runs where the host activates or restores, with `process` held off by nih-plug's plugin lock.

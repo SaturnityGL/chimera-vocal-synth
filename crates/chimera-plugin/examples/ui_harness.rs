@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use chimera_plugin::ChimeraParams;
 use chimera_plugin::bridge::{Bridge, GripAction, ParamHost};
+use chimera_plugin::http::{IPC_SHIM, answer};
 use chimera_plugin::core::{Event, Settings, Shared, Transport, VoiceParams};
 use chimera_plugin::rebuild;
 use nih_plug::prelude::Params;
@@ -46,9 +47,6 @@ fn voice_params(v: &HashMap<String, f32>) -> VoiceParams {
 
 /// `seek`'s value when there's nothing to do (a negative f64's bits).
 const NO_SEEK: u64 = 0xBFF0_0000_0000_0000;
-
-/// Makes the page think it's in the plugin: `window.ipc` is what wry defines there.
-const IPC_SHIM: &str = "<script>window.ipc={postMessage:(m)=>fetch('/ipc',{method:'POST',body:m,keepalive:true})}</script>";
 
 fn main() {
     let port = std::env::args().nth(1).unwrap_or_else(|| "8549".into());
@@ -123,12 +121,6 @@ fn main() {
     for mut req in server.incoming_requests() {
         let url = req.url().split('?').next().unwrap_or("/").to_string();
         match url.as_str() {
-            "/ipc" => {
-                let mut body = String::new();
-                let _ = req.as_reader().read_to_string(&mut body);
-                bridge.command(&body);
-                let _ = req.respond(tiny_http::Response::empty(204));
-            }
             // the test acting as the host
             "/test/note" | "/test/off" | "/test/bend" => {
                 let mut body = String::new();
@@ -175,15 +167,8 @@ fn main() {
                 bridge.close();
                 let _ = req.respond(tiny_http::Response::empty(204));
             }
-            _ => {
-                let reply = bridge.request(&url);
-                let mime = tiny_http::Header::from_bytes(&b"Content-Type"[..], reply.mime.as_bytes()).unwrap();
-                let mut body = reply.body.into_owned();
-                if url == "/" {
-                    body = String::from_utf8_lossy(&body).replacen("<head>", &format!("<head>{IPC_SHIM}"), 1).into_bytes();
-                }
-                let _ = req.respond(tiny_http::Response::from_data(body).with_status_code(reply.status).with_header(mime));
-            }
+            // `/ipc` and the page, as the editor on Linux serves them
+            _ => answer(&bridge, req, IPC_SHIM, None),
         }
     }
 }

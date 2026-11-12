@@ -16,6 +16,13 @@ const POLL_HEADER = 25;
 const PARAMS_EVERY = 3;
 /** The engine-load readout's window (ms). */
 const LOAD_WINDOW = 500;
+/** A request gives up after this long (ms): a server that's gone can leave it hanging instead of failing. */
+const REQUEST_TIMEOUT = 2000;
+/** With no answer for this long (ms), the page says so and polls once a second until there is one. On
+ * Linux it's in a browser, and the plugin stops serving it when its window in the DAW closes; elsewhere
+ * a host can keep its main thread busy for a while. */
+const LOST_AFTER = 3000;
+const LOST = "No answer from the plugin. Open its window again.";
 
 type Params = Record<string, number>;
 
@@ -36,8 +43,18 @@ interface SpeechLines {
   lines: string[];
 }
 
+async function request(path: string): Promise<Response> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), REQUEST_TIMEOUT);
+  try {
+    return await fetch(path, { cache: "no-store", signal: abort.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(path, { cache: "no-store" });
+  const r = await request(path);
   if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
   return (await r.json()) as T;
 }
@@ -93,7 +110,7 @@ let shownNote = -1;
 let lastClock = 0;
 
 async function poll(): Promise<void> {
-  const r = await fetch("/poll", { cache: "no-store" });
+  const r = await request("/poll");
   const buf = await r.arrayBuffer();
   const h = new Float64Array(buf, 0, POLL_HEADER);
   const [rev, syllables, cursor, sung, note, serial, busyNs, audioNs, , faulted, , female, child, spokenSerial, spokenLine, spokenGeneration, spokenT0, lines, speechCursor, beatStep, beatRunning, beatFollowing, hostBpm, samples, n] = h;
@@ -149,10 +166,25 @@ async function poll(): Promise<void> {
   if (++frames % PARAMS_EVERY === 0) followParams(await getJson<Params>("/params"));
 }
 
+let answered = performance.now();
+
 function loop(): void {
   poll()
-    .catch((e) => console.error("plugin poll:", e))
-    .finally(() => requestAnimationFrame(loop));
+    .then(
+      () => {
+        // a poll sets engine.error itself, which clears LOST
+        answered = performance.now();
+      },
+      (e) => console.error("plugin poll:", e),
+    )
+    .finally(() => {
+      if (performance.now() - answered < LOST_AFTER) {
+        requestAnimationFrame(loop);
+      } else {
+        engine.error = LOST;
+        setTimeout(loop, 1000);
+      }
+    });
 }
 
 /** Fill the stores from the plugin and start following it. Await before the first render. */

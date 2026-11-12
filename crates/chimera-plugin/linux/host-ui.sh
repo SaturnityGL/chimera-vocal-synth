@@ -1,5 +1,6 @@
-# What ../host-test/run.sh needs on Linux: REAPER from its tarball, under a virtual display. There's
-# no editor on Linux yet (docs/plugin.md, "Linux"), so nothing here looks at the screen or clicks.
+# What ../host-test/run.sh needs on Linux: REAPER from its tarball, under a virtual display. The
+# editor on Linux is the page in a web browser (docs/plugin.md, "Linux"), which this doesn't drive,
+# so nothing here looks at the screen or clicks.
 
 WITH_EDITOR=0
 CHECK_FORMATS=CLAP,VST3

@@ -16,8 +16,7 @@ clap-wrapper = "=0.3.1"
 flate2 = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-[dev-dependencies]
+# the page over HTTP: the editor on Linux, in a browser, and examples/ui_harness.rs
 tiny_http = "0.12"
 
 # the editor: a webview, on macOS and Windows
