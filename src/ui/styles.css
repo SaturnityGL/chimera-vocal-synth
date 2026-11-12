@@ -2698,3 +2698,89 @@ input[type="range"]::-moz-range-thumb {
     padding: 7px 8px 0;
   }
 }
+
+/* ---------- the Song page (the front page): the head over the tune, the words and the buttons;
+   side by side on a wide screen */
+.song {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "top" "head" "side";
+  gap: 8px;
+  height: 100vh;
+  height: 100dvh;
+  padding: 4px 8px max(8px, env(safe-area-inset-bottom));
+}
+
+.song-top {
+  grid-area: top;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 2px;
+}
+
+.song-studio,
+.song-link {
+  color: var(--text-dim);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+
+.song-studio:hover,
+.song-link:hover {
+  color: var(--text);
+}
+
+.song-head {
+  grid-area: head;
+  display: grid;
+  min-height: 0;
+}
+
+.song-head .screen-body {
+  min-height: 220px;
+}
+
+.song-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.song-side .action-bar .screen-body {
+  min-height: 0;
+  padding: 8px 12px;
+}
+
+.song-side a.chip {
+  text-decoration: none;
+}
+
+.song-words .screen-body {
+  min-height: 0;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+/* 16 px: iOS zooms the page into any smaller field it focuses */
+.song-words textarea {
+  resize: none;
+  min-height: 4.6em;
+  padding: 6px 10px;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+@media (min-width: 900px) {
+  .song {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "top top" "head side";
+    padding: 6px 16px 12px;
+  }
+}

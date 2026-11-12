@@ -1,8 +1,9 @@
 /**
  * Layout lint: a smoke test of the layout. Loads every mode at phone, tablet and desktop sizes in
  * headless Chromium, before and after audio starts, then some alternate states (every encoder page,
- * every creature, the 3D face, a phrase being spoken) and the duet page (`?show=`, with a short
- * duet it renders first), and fails on mistakes screenshot reviews kept missing:
+ * every creature, the 3D face, a phrase being spoken), the Song page (the front page; the tabs are
+ * `?studio`) and the duet page (`?show=`, with a short duet it renders first), and fails on
+ * mistakes screenshot reviews kept missing:
  *
  *  - overlap     two pieces of text or controls drawn over each other (DOM text, buttons, inputs,
  *                dials, and text drawn on canvases, which the page reports by wrapping fillText)
@@ -24,7 +25,7 @@
  *  - label(..., { moving: true }) on canvas text in flight (a word flying off the lips)
  *  Text truncated with an ellipsis or a line clamp is reported as a warning, not an error.
  *
- * Usage: bun tools/layout-lint.ts [--url http://...] [--out out/layout] [--only 1440x900] [--mode play|duet]
+ * Usage: bun tools/layout-lint.ts [--url http://...] [--out out/layout] [--only 1440x900] [--mode play|song|duet]
  * Without --url it starts its own Vite dev server (build the wasm first: bun run wasm).
  * Screenshots of every failing view are saved under --out.
  */
@@ -272,7 +273,8 @@ async function main() {
   const onlyMode = arg("mode");
   const viewports = only ? VIEWPORTS.filter((v) => `${v.w}x${v.h}` === only).concat(VIEWPORTS.some((v) => `${v.w}x${v.h}` === only) ? [] : [{ w: +only.split("x")[0], h: +only.split("x")[1] }]) : VIEWPORTS;
   const duet = !onlyMode || onlyMode === "duet";
-  const modes = onlyMode ? (onlyMode === "duet" ? [] : [onlyMode]) : MODES;
+  const song = !onlyMode || onlyMode === "song";
+  const modes = onlyMode ? (onlyMode === "duet" || onlyMode === "song" ? [] : [onlyMode]) : MODES;
   const duetDir = `${out}/duet-show`;
   if (duet) makeDuet(duetDir);
 
@@ -321,11 +323,27 @@ async function main() {
       // 1.2 s in: both heads singing, a word at each mouth
       await check("duet, playing", 1200);
     }
+    if (song) {
+      // the Song page: the head, then singing, then with a clip to save
+      await page.goto(url, { waitUntil: "networkidle" });
+      await page.waitForSelector(".song-head canvas", { timeout: 15000 });
+      await check("song", 2000);
+      await page.getByRole("button", { name: /^Play$/ }).click();
+      await check("song, singing", 1500);
+      await page.getByRole("button", { name: /^Stop$/ }).click();
+      await page.locator(".song-words textarea").fill("one two");
+      const video = page.getByRole("button", { name: /^Video$/ });
+      if (await video.count()) {
+        await video.click();
+        await page.getByRole("link", { name: /^Save$/ }).waitFor({ timeout: 20000 });
+        await check("song, a clip to save");
+      }
+    }
     if (!modes.length) {
       await page.close();
       continue;
     }
-    await page.goto(url, { waitUntil: "networkidle" });
+    await page.goto(new URL("?studio", url).href, { waitUntil: "networkidle" });
     for (const m of modes) {
       await mode(m);
       await check(m);

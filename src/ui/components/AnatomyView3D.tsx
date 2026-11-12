@@ -40,9 +40,12 @@ export interface HeadFeed {
 
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 
-export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showFormants?: boolean; overlay?: OverlayFn; feed?: HeadFeed; readouts?: boolean }) {
+export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showFormants?: boolean; overlay?: OverlayFn; feed?: HeadFeed; readouts?: boolean; view?: ViewFlags }) {
   const feedRef = useRef<HeadFeed | undefined>(props.feed);
   feedRef.current = props.feed;
+  // the live head's view flags, when not the face screen's toggles (the Song page's fixed look)
+  const viewRef = useRef<ViewFlags | undefined>(props.view);
+  viewRef.current = props.view;
   const readoutsRef = useRef(props.readouts ?? true);
   readoutsRef.current = props.readouts ?? true;
   const overlayRef = useRef<OverlayFn | undefined>(props.overlay);
@@ -188,7 +191,7 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
         tele = engine.latest && sameBody(engine.latest.body, st.body) ? engine.latest : null;
         a = tele ? VoiceModel.articFromArray(tele.t.artic) : st.artic;
       }
-      const view = feed ? feed.view : st.view;
+      const view = feed ? feed.view : (viewRef.current ?? st.view);
       r.face.content = pet.content;
       r.face.update(tele, elapsed);
       const m = feed ? feed.model : model.current;

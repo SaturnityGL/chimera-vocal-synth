@@ -8,6 +8,8 @@ import { mkdirSync } from "node:fs";
 
 const url = process.argv[2] ?? "http://127.0.0.1:5318/";
 const outDir = process.argv[3] ?? "out/e2e";
+// the front page is the Song page; every tab is behind ?studio
+const studio = new URL("?studio", url).href;
 mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({
@@ -24,7 +26,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
     else logs.push(`[${tag}] ${t}`);
   });
   page.on("pageerror", (e) => errors.push(`[${tag}] pageerror: ${e.message}`));
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(studio, { waitUntil: "networkidle" });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${outDir}/${tag}-0-idle.png` });
   // the app opens on Sing; this run starts in Play
@@ -284,7 +286,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
       return calls === 1 ? Promise.reject(new Error("worklet blocked by the test")) : add.apply(this, a);
     };
   });
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(studio, { waitUntil: "networkidle" });
   await page.getByRole("radio", { name: "Play" }).click();
   await page.getByRole("button", { name: /^Breathe$/ }).click();
   const failed = await page.getByText(/Audio could not start/).waitFor({ timeout: 10000 }).then(() => true, () => false);
@@ -305,7 +307,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
 {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.on("pageerror", (e) => errors.push(`[first-key] pageerror: ${e.message}`));
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(studio, { waitUntil: "networkidle" });
   await page.getByRole("radio", { name: "Sing" }).click();
   await page.keyboard.down("d");
   await page.waitForTimeout(1200);
@@ -332,7 +334,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
       }
     };
   });
-  await page.goto(url, { waitUntil: "networkidle" });
+  await page.goto(studio, { waitUntil: "networkidle" });
   await page.getByRole("radio", { name: "Play" }).click();
   await page.getByRole("button", { name: /^Breathe$/ }).click();
   await page.waitForTimeout(1500);
@@ -345,10 +347,39 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.close();
 }
 
+// the Song page: Play sings the words, and Video records a clip to save
+{
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
+  page.on("console", (m) => m.type() === "error" && errors.push(`[song] ${m.text()}`));
+  page.on("pageerror", (e) => errors.push(`[song] pageerror: ${e.message}`));
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.getByRole("button", { name: /^Play$/ }).click();
+  await page.waitForTimeout(1500);
+  const rms = await page.evaluate(() => {
+    // @ts-expect-error debug handle
+    return window.__chimeraEngine?.latest?.t?.outRms ?? -1;
+  });
+  logs.push(`[song] singing the default words: rms ${rms.toFixed(4)}`);
+  if (!(rms > 0.01)) errors.push(`[song] Play made no sound (${rms})`);
+  await page.getByRole("button", { name: /^Stop$/ }).click();
+  await page.locator(".song-words textarea").fill("one two three");
+  await page.getByRole("button", { name: /^Video$/ }).click();
+  const save = page.getByRole("link", { name: /^Save$/ });
+  const saved = await save.waitFor({ timeout: 20000 }).then(() => true, () => false);
+  if (!saved) errors.push("[song] Video never offered a clip to save");
+  else {
+    const [dl] = await Promise.all([page.waitForEvent("download"), save.click()]);
+    const size = (await (await dl.createReadStream()).toArray()).reduce((n, b: Buffer) => n + b.length, 0);
+    logs.push(`[song] clip ${dl.suggestedFilename()}: ${size} bytes`);
+    if (size < 10000) errors.push(`[song] the clip is nearly empty (${size} bytes)`);
+  }
+  await page.close();
+}
+
 await run({ width: 1440, height: 980 }, "desktop");
 await run({ width: 390, height: 844 }, "mobile");
 await browser.close();
 console.log("console errors:", errors.length ? "\n" + errors.join("\n") : "none");
-console.log(logs.filter((l) => /load|rate|warn|transcription|example|creature|held|back to|beatbox|silence|sing|octave|retry/i.test(l)).slice(0, 52).join("\n"));
+console.log(logs.filter((l) => /load|rate|warn|transcription|example|creature|held|back to|beatbox|silence|sing|octave|retry|song/i.test(l)).slice(0, 52).join("\n"));
 // a run that collected errors fails, so CI and agents can't read it as a pass
 if (errors.length) process.exit(1);

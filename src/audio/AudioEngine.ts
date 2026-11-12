@@ -49,6 +49,18 @@ export class AudioEngine {
     return this.latest.t.clock + Math.min(0.25, (performance.now() - this.latestAt) / 1000);
   }
 
+  private tap: MediaStreamAudioDestinationNode | null = null;
+
+  /** What the speakers play, as a media stream (to record a clip); null before start(). */
+  recordStream(): MediaStream | null {
+    if (!this.ctx || !this.master) return null;
+    if (!this.tap) {
+      this.tap = this.ctx.createMediaStreamDestination();
+      this.master.connect(this.tap);
+    }
+    return this.tap.stream;
+  }
+
   get running(): boolean {
     return !!this.ctx && this.ctx.state === "running";
   }
