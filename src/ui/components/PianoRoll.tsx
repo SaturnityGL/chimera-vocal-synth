@@ -4,7 +4,7 @@ import { engine } from "../../audio/AudioEngine.ts";
 import { useStore } from "../store.ts";
 import { roll, tickSinging } from "../singing.ts";
 import { TEXT, V } from "../colors.ts";
-import { beam, beamPts, label, seg, type Pt } from "../render/vector.ts";
+import { beam, beamPts, label, labelWidth, seg, type Pt } from "../render/vector.ts";
 import { nearestBody } from "../body.ts";
 
 /** pixels per second of voice time */
@@ -93,7 +93,12 @@ export function PianoRoll() {
         ctx.restore();
       }
       beam(ctx, r, V.green, live ? 1.6 : 1.2, { alpha: live ? 1 : future ? 0.38 : 0.62, hot: live });
-      if (n.text && n.text !== "~") label(ctx, n.text.toUpperCase(), x0 + 1, yc - barH / 2 - 4, { size: 10, color: live ? V.white : TEXT.secondary, ls: 0.12, alpha: future ? 0.6 : 1 });
+      if (n.text && n.text !== "~") {
+        const text = n.text.toUpperCase();
+        const o = { size: 10, color: live ? V.white : TEXT.secondary, ls: 0.12, alpha: future ? 0.6 : 1 };
+        // a tune's coming syllables scroll in from the right edge, cut by it until they're in
+        label(ctx, text, x0 + 1, yc - barH / 2 - 4, { ...o, moving: x0 + 1 + labelWidth(ctx, text, o) > w });
+      }
     }
 
     // the pitch actually sung

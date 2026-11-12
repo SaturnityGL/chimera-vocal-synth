@@ -2057,12 +2057,13 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ---------- Sing */
-/* the pitch roll only shows what was sung: a smaller share than it had, so the song's button
-   above it fits a 1280 x 800 window and the keys keep their room */
+/* the words right under the button that sings them; the pitch roll only shows what was sung: a
+   smaller share than it had, so the song's button fits a 1280 x 800 window and the keys keep
+   their room */
 .right-sing {
   grid-template-columns: minmax(0, 342fr) minmax(0, 342fr);
-  grid-template-rows: auto minmax(min-content, 240fr) auto auto minmax(min-content, 172fr);
-  grid-template-areas: "act act" "roll roll" "lyrics lyrics" "spec voice" "keys keys";
+  grid-template-rows: auto auto minmax(min-content, 240fr) auto minmax(min-content, 172fr);
+  grid-template-areas: "act act" "lyrics lyrics" "roll roll" "spec voice" "keys keys";
 }
 
 .s-roll { grid-area: roll; }
@@ -2084,8 +2085,10 @@ input[type="range"]::-moz-range-thumb {
   min-height: 0;
 }
 
+/* a row per line of the song (up to four) */
 .lyrics textarea {
-  height: 30px;
+  height: auto;
+  min-height: 30px;
   resize: none;
   padding: 5px 10px;
   font-size: 13px;
@@ -2166,7 +2169,7 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 1100px) {
   .right-sing {
     grid-template-rows: none;
-    grid-template-areas: "act act" "roll roll" "lyrics lyrics" "spec voice" "keys keys";
+    grid-template-areas: "act act" "lyrics lyrics" "roll roll" "spec voice" "keys keys";
   }
   .right-sing .screen-body {
     min-height: 190px;
@@ -2182,7 +2185,11 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 640px) {
   .right-sing {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "act" "roll" "lyrics" "spec" "voice" "keys";
+    grid-template-areas: "act" "lyrics" "roll" "spec" "voice" "keys";
+  }
+  /* 16 px: iOS zooms the page into any smaller field it focuses */
+  .lyrics textarea {
+    font-size: 16px;
   }
 }
 
@@ -2696,91 +2703,5 @@ input[type="range"]::-moz-range-thumb {
   }
   .duet-head .screen-head {
     padding: 7px 8px 0;
-  }
-}
-
-/* ---------- the Song page (the front page): the head over the tune, the words and the buttons;
-   side by side on a wide screen */
-.song {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  grid-template-areas: "top" "head" "side";
-  gap: 8px;
-  height: 100vh;
-  height: 100dvh;
-  padding: 4px 8px max(8px, env(safe-area-inset-bottom));
-}
-
-.song-top {
-  grid-area: top;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 4px 2px;
-}
-
-.song-studio,
-.song-link {
-  color: var(--text-dim);
-  font-size: 12px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  text-decoration: none;
-}
-
-.song-studio:hover,
-.song-link:hover {
-  color: var(--text);
-}
-
-.song-head {
-  grid-area: head;
-  display: grid;
-  min-height: 0;
-}
-
-.song-head .screen-body {
-  min-height: 220px;
-}
-
-.song-side {
-  grid-area: side;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-.song-side .action-bar .screen-body {
-  min-height: 0;
-  padding: 8px 12px;
-}
-
-.song-side a.chip {
-  text-decoration: none;
-}
-
-.song-words .screen-body {
-  min-height: 0;
-  gap: 10px;
-  padding: 10px 12px;
-}
-
-/* 16 px: iOS zooms the page into any smaller field it focuses */
-.song-words textarea {
-  resize: none;
-  min-height: 4.6em;
-  padding: 6px 10px;
-  font-size: 16px;
-  line-height: 1.4;
-}
-
-@media (min-width: 900px) {
-  .song {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
-    grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas: "top top" "head side";
-    padding: 6px 16px 12px;
   }
 }

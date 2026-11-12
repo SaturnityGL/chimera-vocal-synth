@@ -454,8 +454,12 @@ export class AnatomyRenderer {
     seg(ctx, x0, y0, x1, y1, V.white, 1.4, { hot: true });
     const nx = -(y1 - y0), ny = x1 - x0, nl = Math.hypot(nx, ny) || 1;
     for (const [x, y] of [[x0, y0], [x1, y1]]) seg(ctx, x - (nx / nl) * 4, y - (ny / nl) * 4, x + (nx / nl) * 4, y + (ny / nl) * 4, V.white, 1.2);
-    const lx = Math.max(x0, x1) + 10, ly = Math.min(y0, y1) - 4;
-    label(ctx, ma <= 0.0005 ? "CLOSED" : `${ma.toFixed(2)} CM²`, lx, ly, { size: 11, color: V.white, ls: 0.12 });
+    // at the lips, in front of them is where Sing and Speak write the words: the label goes behind
+    const end = f.grid[f.grid.length - 1];
+    const lipsX = Math.max(this.P(end.inner)[0], this.P(end.outer)[0]);
+    const atLips = lipsX - Math.max(x0, x1) < 1.5 * this.pxPerCm;
+    const lx = atLips ? Math.min(x0, x1) - 10 : Math.max(x0, x1) + 10, ly = Math.min(y0, y1) - 4;
+    label(ctx, ma <= 0.0005 ? "CLOSED" : `${ma.toFixed(2)} CM²`, lx, ly, { size: 11, color: V.white, ls: 0.12, align: atLips ? "right" : "left" });
   }
 
   private drawHandles(ctx: CanvasRenderingContext2D, model: VoiceModel, f: HumanFrame, a: HumanArtic, hover: HandleId | null, drag: HandleId | null): void {

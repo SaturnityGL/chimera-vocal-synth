@@ -1,9 +1,11 @@
 /**
- * The Song page's tunes: original melodies (written for this app) that anyone's words are fitted
- * to (fit.ts). Each phrase is one line of lyrics; a song longer than the tune goes round again.
+ * Sing's tunes, named for how they sound: melodies anyone's words are fitted to (fit.ts). All are
+ * written for this instrument except Twinkle (traditional). Each phrase is one line of lyrics; a song longer than the tune goes round again.
  * Notes are [midi, beats], at the female voice's pitch; `octave` shifts the other bodies, as the
  * demo songs do. Phrases end on a long note: the breath before the next line comes out of it.
  */
+import { DEMO_SONGS } from "../wasm/engine.ts";
+
 export interface Tune {
   id: string;
   name: string;
@@ -12,10 +14,21 @@ export interface Tune {
   phrases: [number, number][][];
 }
 
+/** a demo song's melody (the engine's catalog, shared with `chimera render song`) cut into phrases of `sizes` notes */
+function fromDemo(id: string, name: string, demo: string, sizes: number[]): Tune {
+  const d = DEMO_SONGS.find((s) => s.name === demo)!;
+  let at = 0;
+  const phrases = sizes.map((n) => d.notes.slice(at, (at += n)).map(([m, b]): [number, number] => [m, b]));
+  return { id, name, bpm: d.bpm, octave: d.octave, phrases };
+}
+
 export const TUNES: readonly Tune[] = [
+  // "Made of air", the instrument's own: minor, unhurried
+  fromDemo("dreamy", "Dreamy", "Made of air", [9, 10]),
   {
-    id: "sunrise",
-    name: "Sunrise",
+    // major, bright, climbing
+    id: "joyful",
+    name: "Joyful",
     bpm: 104,
     octave: { male: -1, female: 0, child: 0 },
     phrases: [
@@ -26,9 +39,10 @@ export const TUNES: readonly Tune[] = [
     ],
   },
   {
-    id: "night-drive",
-    name: "Night drive",
-    bpm: 88,
+    // minor, slow, falling back home
+    id: "somber",
+    name: "Somber",
+    bpm: 76,
     octave: { male: -1, female: 0, child: 0 },
     phrases: [
       [[57, 1], [60, 1], [64, 1.5], [62, 0.5], [60, 1], [59, 1], [57, 2]],
@@ -38,8 +52,9 @@ export const TUNES: readonly Tune[] = [
     ],
   },
   {
-    id: "bounce",
-    name: "Bounce",
+    // quick, short notes, room for many words
+    id: "playful",
+    name: "Playful",
     bpm: 120,
     octave: { male: -1, female: 0, child: 0 },
     phrases: [
@@ -50,8 +65,9 @@ export const TUNES: readonly Tune[] = [
     ],
   },
   {
-    id: "lullaby",
-    name: "Lullaby",
+    // a slow waltz, long notes
+    id: "gentle",
+    name: "Gentle",
     bpm: 96,
     octave: { male: -1, female: 0, child: 0 },
     phrases: [
@@ -61,4 +77,5 @@ export const TUNES: readonly Tune[] = [
       [[65, 2], [69, 1], [67, 2], [64, 1], [62, 2], [64, 1], [65, 3]],
     ],
   },
+  fromDemo("twinkle", "Twinkle, twinkle", "Twinkle, twinkle", [7, 7]),
 ];

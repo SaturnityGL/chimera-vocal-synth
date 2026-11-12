@@ -6,7 +6,7 @@ import { useStore } from "../store.ts";
 import { useModel } from "../useModel.ts";
 import { VoiceModel } from "../analysis.ts";
 import { TEXT, V } from "../colors.ts";
-import { beam, beamPts, label, seg, type Pt } from "../render/vector.ts";
+import { beam, beamPts, label, labelWidth, seg, type Pt } from "../render/vector.ts";
 
 const FMIN = 60, FMAX = 8000;
 const RANGE = 62; // dB shown
@@ -31,9 +31,12 @@ export function SpectrumView(props: { ring?: boolean }) {
     const tele = engine.latest && sameBody(engine.latest.body, st.body) ? engine.latest : null;
     const f0 = tele && tele.t.voicing > 0.3 ? tele.t.f0 : 0;
 
+    // the F0 label is written to the left of its marker: a frequency label under it gives way
+    const f0Text = `F0 ${Math.round(f0)}`;
+    const f0Left = f0 ? fx(f0) - 9 - labelWidth(ctx, f0Text, { size: 9, ls: 0.12 }) : 0;
     for (const f of [100, 200, 500, 1000, 2000, 5000]) {
       seg(ctx, fx(f), top, fx(f), bot, V.frame, 1);
-      if (!(f0 && Math.abs(fx(f) - fx(f0)) < 40)) label(ctx, f >= 1000 ? `${f / 1000}K` : String(f), fx(f), h - 6, { size: 9, color: TEXT.secondary, align: "center", ls: 0.1 });
+      if (!(f0 && fx(f) + 12 > f0Left && fx(f) - 12 < fx(f0) + 6)) label(ctx, f >= 1000 ? `${f / 1000}K` : String(f), fx(f), h - 6, { size: 9, color: TEXT.secondary, align: "center", ls: 0.1 });
     }
     for (const db of [-20, -40]) {
       seg(ctx, left, dbY(db), right, dbY(db), V.frame, 1, { dash: [2, 4] });
@@ -111,7 +114,7 @@ export function SpectrumView(props: { ring?: boolean }) {
       tri.lineTo(x, bot + 1);
       tri.closePath();
       beam(ctx, tri, V.green, 1.2);
-      label(ctx, `F0 ${Math.round(f0)}`, x - 9, bot + 13, { size: 9, color: V.green, align: "right", ls: 0.12 });
+      label(ctx, f0Text, x - 9, bot + 13, { size: 9, color: V.green, align: "right", ls: 0.12 });
     }
   });
   return <canvas ref={ref} className="instrument-canvas" aria-label="Output spectrum: harmonics, the vocal tract's resonances and its formants" role="img" />;

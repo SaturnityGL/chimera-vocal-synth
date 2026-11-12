@@ -18,11 +18,11 @@ const sung = (ns: SungNote[]) => ns.filter((n) => !n.syl.melisma).map((n) => n.s
 const texts = (s: Syllable[]) => s.map((x) => x.text);
 
 describe("tunes", () => {
-  test("every phrase of a tune is as long as the others, and ends on its longest-or-equal last note", () => {
+  test("every phrase of a tune is as long as the others, and ends on a held note (room for the breath)", () => {
     for (const t of TUNES) {
       const lens = t.phrases.map((p) => beats(p.map(([, b]) => ({ beats: b }))));
       expect(new Set(lens).size).toBe(1);
-      for (const p of t.phrases) expect(p[p.length - 1][1]).toBeGreaterThanOrEqual(2);
+      for (const p of t.phrases) expect(p[p.length - 1][1]).toBeGreaterThanOrEqual(1.5);
     }
   });
   test("ids are unique", () => {
@@ -31,10 +31,12 @@ describe("tunes", () => {
 });
 
 describe("fitting a line to a phrase", () => {
-  const phrase = TUNES[0].phrases[0]; // 7 notes, 8 beats
+  const phrase = TUNES.find((t) => t.id === "joyful")!.phrases[0]; // 7 notes, 8 beats
   const check = (words: string) => {
     const line = lyricsToSyllables(words);
-    const ns = fitLine(line, phrase);
+    const { notes: ns, from } = fitLine(line, phrase);
+    // each note knows the syllable it sings (a held vowel: the one it holds)
+    expect(from.map((i) => line[i].nucleus.ipa)).toEqual(ns.map((n) => n.syl.nucleus.ipa));
     expect(beats(ns)).toBeCloseTo(8, 9);
     expect(sung(ns)).toEqual(texts(line.filter((s) => !s.melisma)));
     expect(ns.map((n) => n.syl.phraseEnd)).toEqual(ns.map((_, i) => i === ns.length - 1));
@@ -68,25 +70,29 @@ describe("lyrics into lines", () => {
     const ls = lines(syls, 7);
     expect(ls.length).toBeGreaterThan(1);
     for (const l of ls) {
-      expect(l[l.length - 1].wordEnd).toBe(true);
+      expect(syls[l[l.length - 1]].wordEnd).toBe(true);
       expect(l.length).toBeLessThanOrEqual(11);
     }
-    expect(ls.flat().map((s) => s.text)).toEqual(texts(syls));
+    expect(ls.flat()).toEqual(syls.map((_, i) => i));
   });
   test("a word or two on its own joins the next line", () => {
     const ls = lines(lyricsToSyllables("Oh,\nI will sing this line for you"), 7);
     expect(ls.length).toBe(1);
   });
-  test("only each line's last syllable ends a phrase", () => {
-    const ls = lines(lyricsToSyllables("one, two three four five six seven.\neight nine ten eleven twelve"), 7);
-    for (const l of ls) expect(l.map((s) => s.phraseEnd)).toEqual(l.map((_, i) => i === l.length - 1));
+  test("only each line's last note ends a phrase", () => {
+    const syls = lyricsToSyllables("one, two three four five six seven.\neight nine ten eleven twelve");
+    const { notes } = fitSong(TUNES[1], syls);
+    const ends = notes.filter((n) => n.syl.phraseEnd).length;
+    expect(ends).toBe(lines(syls, phraseSize(TUNES[1])).length);
+    expect(notes[notes.length - 1].syl.phraseEnd).toBe(true);
   });
 });
 
 describe("a whole song", () => {
   test("every tune sings its own la-la exactly, note for note", () => {
     for (const t of TUNES) {
-      const ns = fitSong(t, lyricsToSyllables(la(t)));
+      const { notes: ns, from } = fitSong(t, lyricsToSyllables(la(t)));
+      expect(from).toEqual(ns.map((_, i) => i));
       expect(ns.map((n) => [n.midi, n.beats])).toEqual(t.phrases.flat());
       expect(ns.every((n) => !n.syl.melisma)).toBe(true);
     }
@@ -94,12 +100,12 @@ describe("a whole song", () => {
   test("more lines than phrases go round the tune again, shifted by the body's octave", () => {
     const t = TUNES[1];
     const words = Array.from({ length: 6 }, () => "la ".repeat(phraseSize(t)).trim()).join("\n");
-    const ns = fitSong(t, lyricsToSyllables(words), -12);
+    const { notes: ns } = fitSong(t, lyricsToSyllables(words), -12);
     expect(ns.length).toBe(6 * phraseSize(t));
     expect(ns[4 * phraseSize(t)].midi).toBe(t.phrases[0][0][0] - 12);
   });
   test("a user's own held vowel (-) stays a held vowel", () => {
-    const ns = fitSong(TUNES[0], lyricsToSyllables("oh - my darling one two three"));
+    const { notes: ns } = fitSong(TUNES[1], lyricsToSyllables("oh - my darling one two three"));
     expect(ns[1].syl.melisma).toBe(true);
     expect(ns[1].syl.nucleus.ipa).toBe(ns[0].syl.nucleus.ipa);
   });

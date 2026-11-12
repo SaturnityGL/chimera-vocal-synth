@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { recording } from "../../song/record.ts";
 import { AnatomyRenderer, type FaceView, type HandleId, type Slot } from "../render/anatomy.ts";
 import { Glow } from "../render/vector.ts";
 import { engine } from "../../audio/AudioEngine.ts";
@@ -102,12 +103,15 @@ export function AnatomyView(props: { slots?: SlotsFn; info?: InfoFn; showFormant
         const f = m.frame(a);
         if (++fTick % 4 === 0 || formants.length === 0) formants = m.transfer(a).formants;
         const info = infoRef.current(m, f, tele);
+        // recording a clip: the head without the measurements
+        const clean = recording.on;
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.globalCompositeOperation = "source-over";
         ctx.fillStyle = "#000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        r.draw(ctx, m, f, a, tele, st.view, { hover: hoverRef.current, drag: dragRef.current?.id ?? null, dt, formants: formantsRef.current ? formants : [], slots: slotsRef.current(m, a, f, formants, tele), info: info.map((s) => s.toUpperCase()) });
+        const view = clean ? { ...st.view, calipers: false, grid: false } : st.view;
+        r.draw(ctx, m, f, a, tele, view, { hover: hoverRef.current, drag: dragRef.current?.id ?? null, dt, formants: formantsRef.current && !clean ? formants : [], slots: clean ? [] : slotsRef.current(m, a, f, formants, tele), info: clean ? [] : info.map((s) => s.toUpperCase()) });
         overlayRef.current?.(ctx, r, m, f, a, { w, h, dt });
         glow.apply(canvas, ctx, dpr);
       }

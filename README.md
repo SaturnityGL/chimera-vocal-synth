@@ -10,8 +10,8 @@ for tests and the `chimera` CLI.
 1. **One instrument**: a physically modeled voice (lungs, vocal folds, throat, mouth). No
    samples, no neural audio.
 2. **The web app is the primary surface**: anyone should be able to make songs in it without
-   an LLM's help, and share them. Its front page is the Song page. An iOS app comes next, ahead
-   of the plugin (CLAP/VST3/AU), which still ships but is secondary.
+   an LLM's help, and share them. An iOS app comes next, ahead of the plugin (CLAP/VST3/AU),
+   which still ships but is secondary.
 3. **More realistic without losing what it is**: the robotic, primitive sound people like today
    stays available, and every realism change is checked by ear against it.
 4. **Languages enter through one shared front-end design**, not one-off hacks. Each needs a
@@ -22,18 +22,17 @@ for tests and the `chimera` CLI.
 
 ## What it does
 
-- **Song** (the front page): pick a tune (four originals), type your words, and the head sings
-  them, each line fitted to a phrase of the tune; **Video** sings it again into a 9:16 clip to
-  share. The tabs below are the studio, at `?studio`.
 - **Play**: drag the tongue, lips and jaw in a live cutaway of the head; vowel pad, encoders,
   computer keyboard and Web MIDI.
 - **Speak**: English text (CMUdict with a letter-to-sound fallback) or IPA, turned into
   gestures and prosody, with the gestural score and a consonant chart on screen. In IPA mode a
   notice under the box lists the symbols and marks the voice doesn't say (`chimera render speech`
   prints the same as warnings).
-- **Sing**: a pitch roll with lyrics per note; consonants land before the beat. Lyrics can be
-  English or Korean (Hangul: one block per note, with Korean sound rules); each language is a
-  front end ([docs/language-front-ends.md](docs/language-front-ends.md)).
+- **Sing**: type words and the **Sing** button sings them to a tune picked by its mood, each line
+  fitted to a phrase of it (Tempo and Key on the Voice screen); **Video** sings it again into a
+  9:16 clip to share. The keys sing the same words a syllable at a time, legato or not, onto a
+  pitch roll; consonants land before the beat. Lyrics can be English or Korean (Hangul: one
+  block per note, with Korean sound rules); each language is a front end ([docs/language-front-ends.md](docs/language-front-ends.md)).
 - **Beatbox**: pads and a step sequencer, every drum an articulatory gesture.
 - **Bestiary**: songbird (two-voice syrinx), seal, alligator and elephant.
 - **Duet** (`?show=<id>`): two 3D heads replay a pre-rendered song.

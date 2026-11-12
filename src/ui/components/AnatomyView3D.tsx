@@ -11,6 +11,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Anatomy3D } from "../render/anatomy3d.ts";
 import { Petting } from "../render/petting.ts";
 import { drawReadouts } from "../render/readouts.ts";
+import { recording } from "../../song/record.ts";
 import { Glow, label } from "../render/vector.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { sameBody } from "../body.ts";
@@ -191,7 +192,9 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
         tele = engine.latest && sameBody(engine.latest.body, st.body) ? engine.latest : null;
         a = tele ? VoiceModel.articFromArray(tele.t.artic) : st.artic;
       }
-      const view = feed ? feed.view : (viewRef.current ?? st.view);
+      // recording a clip: the head without the measurements
+      const clean = !feed && recording.on;
+      const view = feed ? feed.view : clean ? { ...st.view, calipers: false, grid: false } : (viewRef.current ?? st.view);
       r.face.content = pet.content;
       r.face.update(tele, elapsed);
       const m = feed ? feed.model : model.current;
@@ -219,7 +222,7 @@ export function AnatomyView3D(props: { slots?: SlotsFn; info?: InfoFn; showForma
         stepTween(dt);
         controls.update(dt);
         const f = m.frame(a);
-        const readouts = readoutsRef.current;
+        const readouts = readoutsRef.current && !clean;
         if (readouts && (++fTick % 4 === 0 || formants.length === 0)) formants = m.transfer(a).formants;
         r.update(m, f, a, tele, view, dt);
         gl.render(r.scene, camera);

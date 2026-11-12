@@ -16,22 +16,22 @@ export function phraseSize(tune: Tune): number {
   return Math.max(1, Math.round(tune.phrases.reduce((n, p) => n + p.length, 0) / tune.phrases.length));
 }
 
-/** The lyrics' syllables in lines of about `size`, each ending a phrase (and nothing else). */
-export function lines(syls: Syllable[], size: number): Syllable[][] {
-  const raw: Syllable[][] = [];
-  let cur: Syllable[] = [];
-  for (const s of syls) {
-    cur.push(s);
-    if (s.phraseEnd) {
+/** The lyrics' syllables in lines of about `size` (as indices into `syls`). */
+export function lines(syls: Syllable[], size: number): number[][] {
+  const raw: number[][] = [];
+  let cur: number[] = [];
+  for (let i = 0; i < syls.length; i++) {
+    cur.push(i);
+    if (syls[i].phraseEnd) {
       raw.push(cur);
       cur = [];
     }
   }
   if (cur.length) raw.push(cur);
-  const short = (p: Syllable[]) => p.length < size / 3;
-  const fits = (a: Syllable[], b: Syllable[]) => a.length + b.length <= 1.5 * size;
+  const short = (p: number[]) => p.length < size / 3;
+  const fits = (a: number[], b: number[]) => a.length + b.length <= 1.5 * size;
   // "Oh, yeah, baby": a line of a word or two joins the next one (the last joins the one before)
-  const merged: Syllable[][] = [];
+  const merged: number[][] = [];
   for (const p of raw) {
     const prev = merged[merged.length - 1];
     if (prev && short(prev) && fits(prev, p)) prev.push(...p);
@@ -42,7 +42,7 @@ export function lines(syls: Syllable[], size: number): Syllable[][] {
     if (short(last) && fits(prev, last)) prev.push(...merged.pop()!);
   }
   // a long line: cut at the word ends nearest equal parts (never before a held vowel)
-  const out: Syllable[][] = [];
+  const out: number[][] = [];
   for (const p of merged) {
     if (p.length <= 1.5 * size) {
       out.push(p);
@@ -53,20 +53,23 @@ export function lines(syls: Syllable[], size: number): Syllable[][] {
     for (let c = 1; c < k; c++) {
       const target = Math.round((c * p.length) / k);
       let cut = -1;
-      for (let i = start + 1; i < p.length; i++) if (p[i - 1].wordEnd && !p[i].melisma && (cut < 0 || Math.abs(i - target) < Math.abs(cut - target))) cut = i;
+      for (let i = start + 1; i < p.length; i++) if (syls[p[i - 1]].wordEnd && !syls[p[i]].melisma && (cut < 0 || Math.abs(i - target) < Math.abs(cut - target))) cut = i;
       if (cut < 0) break;
       out.push(p.slice(start, cut));
       start = cut;
     }
     out.push(p.slice(start));
   }
-  return out.map((p) => p.map((s, i) => ({ ...s, phraseEnd: i === p.length - 1 })));
+  return out;
 }
 
-/** One line onto one phrase's notes (see the file's comment). The last note ends the phrase. */
-export function fitLine(line: Syllable[], phrase: readonly [number, number][]): SungNote[] {
+/**
+ * One line onto one phrase's notes (see the file's comment). The last note ends the phrase, and
+ * only it. `from[k]` is the line's syllable note k sings (a held vowel: the syllable it holds).
+ */
+export function fitLine(line: Syllable[], phrase: readonly [number, number][]): { notes: SungNote[]; from: number[] } {
   const n = line.length;
-  if (!n) return [];
+  if (!n) return { notes: [], from: [] };
   const notes = phrase.map(([midi, beats]) => ({ midi, beats }));
   while (notes.length < n) {
     let k = 0;
@@ -84,18 +87,28 @@ export function fitLine(line: Syllable[], phrase: readonly [number, number][]): 
   const m = notes.length;
   // note j sings syllable at(j); counted from the end, so spare notes go to the last syllables
   const at = (j: number) => n - 1 - Math.floor(((m - 1 - j) * n) / m);
-  return notes.map((note, j) => {
+  const out = notes.map((note, j) => {
     const s = line[at(j)];
     const held = j > 0 && at(j - 1) === at(j);
     const syl: Syllable = held ? { text: "~", onset: [], nucleus: s.nucleus, coda: [], melisma: true, wordEnd: s.wordEnd, phraseEnd: false } : { ...s, phraseEnd: false };
     if (j === m - 1) syl.phraseEnd = true;
     return { midi: note.midi, beats: note.beats, syl };
   });
+  return { notes: out, from: notes.map((_, j) => at(j)) };
 }
 
-/** The whole song: every line on its phrase, `shift` semitones from the tune's pitch. */
-export function fitSong(tune: Tune, syls: Syllable[], shift = 0): SungNote[] {
-  return lines(syls, phraseSize(tune)).flatMap((line, k) => fitLine(line, tune.phrases[k % tune.phrases.length]).map((n) => ({ ...n, midi: n.midi + shift })));
+/**
+ * The whole song: every line on its phrase, `shift` semitones from the tune's pitch. `from[k]` is
+ * the index in `syls` of the syllable note k sings.
+ */
+export function fitSong(tune: Tune, syls: Syllable[], shift = 0): { notes: SungNote[]; from: number[] } {
+  const notes: SungNote[] = [], from: number[] = [];
+  lines(syls, phraseSize(tune)).forEach((line, k) => {
+    const f = fitLine(line.map((i) => syls[i]), tune.phrases[k % tune.phrases.length]);
+    for (const n of f.notes) notes.push({ ...n, midi: n.midi + shift });
+    for (const j of f.from) from.push(line[j]);
+  });
+  return { notes, from };
 }
 
 /** The words a tune is sung on when none are given: "la" on every note. */

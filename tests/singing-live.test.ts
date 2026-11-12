@@ -42,7 +42,7 @@ const engineStub = new Proxy(
   { get: (t, k) => (k in t ? t[k as string] : () => {}), set: (t, k, v) => ((t[k as string] = v), true) },
 );
 mock.module("../src/audio/AudioEngine.ts", () => ({ engine: engineStub }));
-const { useSing, singNoteOn, singNoteOff, playDemo, stopSinging, tickSinging } = await import("../src/ui/singing.ts");
+const { useSing, singNoteOn, singNoteOff, playTune, stopSinging, tickSinging } = await import("../src/ui/singing.ts");
 const gesturesOf = () => voice.score();
 /** breath the score is giving now (strength-weighted activation of breath gestures) */
 const breathNow = () => {
@@ -141,55 +141,67 @@ describe("Sing mode, live keys", () => {
     expect(hard.rms / soft.rms).toBeGreaterThan(1.6); // > 4 dB
   });
 
-  test("a demo still waiting for audio or the dictionary is cancelled by a stop", async () => {
+  test("a tune still waiting for audio or the dictionary is cancelled by a stop", async () => {
     voice = new WasmVoice(FS);
     let scheduled = 0;
     const schedule = engineStub.schedule as typeof fakeEngine.schedule;
     engineStub.schedule = (plan: { gestures: Gesture[] }) => (scheduled++, schedule(plan));
     let go!: () => void;
-    const waiting = playDemo("Made of air", MALE, () => new Promise<void>((r) => (go = r)));
+    const waiting = playTune("dreamy", MALE, () => new Promise<void>((r) => (go = r)));
     stopSinging(); // e.g. the mode changed while audio was starting
     go();
-    await waiting;
+    expect(await waiting).toBe(false);
     expect(scheduled).toBe(0);
-    expect(useSing.getState().demo).toBeNull();
-    await playDemo("Made of air", MALE, () => Promise.resolve());
+    expect(useSing.getState().playing).toBeNull();
+    expect(await playTune("dreamy", MALE, () => Promise.resolve())).toBe(true);
     expect(scheduled).toBe(1);
-    expect(useSing.getState().demo).toBe("Made of air");
+    expect(useSing.getState().playing).toBe("dreamy");
     stopSinging();
     engineStub.schedule = schedule;
   });
 
-  test("a demo shows the song's words while it plays, then gives the player's own back", async () => {
+  test("a tune sings the player's own words and leaves them as they are; the end is reported once", async () => {
     voice = new WasmVoice(FS);
     const sing = useSing.getState;
     sing().setLyrics("my own words to sing");
     sing().setCursor(2);
-    // stopped (a song chip pressed again, the mode or body changed)
-    await playDemo("Made of air", MALE, () => Promise.resolve());
-    expect(sing().demo).toBe("Made of air");
-    expect(sing().lyrics).not.toBe("my own words to sing");
-    stopSinging();
+    let ended = 0;
+    await playTune("joyful", MALE, () => Promise.resolve(), () => ended++);
+    expect(sing().playing).toBe("joyful");
     expect(sing().lyrics).toBe("my own words to sing");
     expect(sing().syllables.map((s) => s.text)).toEqual(["my", "own", "words", "to", "sing"]);
     expect(sing().cursor).toBe(2);
-    // played to the end
-    await playDemo("Made of air", MALE, () => Promise.resolve());
+    // the syllable being sung, in the player's lyrics: the first, a little after the first beat
+    planned({ type: "planned", id: 1, t0: voice.clock - 0.5, end: 0 });
+    tickSinging();
+    expect(sing().at).toBe(0);
+    // sung to the end
     planned({ type: "planned", id: 1, t0: voice.clock - 1000, end: 0 });
     tickSinging();
-    expect(sing().demo).toBeNull();
-    expect(sing().lyrics).toBe("my own words to sing");
-    expect(sing().cursor).toBe(2);
-    // a second song started while the first plays gives back the player's words, not the first song's
-    await playDemo("Made of air", MALE, () => Promise.resolve());
-    await playDemo("Made of air", MALE, () => Promise.resolve());
+    tickSinging();
+    expect(sing().playing).toBeNull();
+    expect(ended).toBe(1);
+    // stopped: not reported as ended
+    await playTune("joyful", MALE, () => Promise.resolve(), () => ended++);
     stopSinging();
-    expect(sing().lyrics).toBe("my own words to sing");
-    // words typed during a demo are the player's from then on
-    await playDemo("Made of air", MALE, () => Promise.resolve());
+    expect(ended).toBe(1);
+    // words typed during a tune stop it
+    await playTune("joyful", MALE, () => Promise.resolve());
     sing().setLyrics("typed during the song");
-    expect(sing().demo).toBeNull();
+    expect(sing().playing).toBeNull();
     expect(sing().lyrics).toBe("typed during the song");
+  });
+
+  test("empty lyrics sing the tune on la, highlighting nothing", async () => {
+    voice = new WasmVoice(FS);
+    const sing = useSing.getState;
+    sing().setLyrics("");
+    expect(await playTune("somber", MALE, () => Promise.resolve())).toBe(true);
+    planned({ type: "planned", id: 1, t0: voice.clock - 0.5, end: 0 });
+    tickSinging();
+    expect(sing().at).toBe(-1);
+    stopSinging();
+    sing().setLyrics("Hello there");
   });
 
   test("a quick next note drops the last one's breath-out; leaving Sing cancels a pending ending", () => {

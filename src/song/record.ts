@@ -2,7 +2,8 @@
  * A video of the head singing: the face screen's canvas copied each frame into a 9:16 frame (black
  * above and below, which the vector look already is) with the wordmark at the foot, and the voice
  * from the audio graph, through the browser's MediaRecorder. MP4 where the browser records it
- * (Safari, recent Chrome: what Instagram and TikTok take), else WebM.
+ * (Safari, recent Chrome: what Instagram and TikTok take), else WebM. While a clip records, the
+ * face screens leave out their measurements (`recording`), so what you see is what you get.
  */
 import { label } from "../ui/render/vector.ts";
 import { V } from "../ui/colors.ts";
@@ -16,6 +17,9 @@ function pickType(): string | null {
   if (typeof MediaRecorder === "undefined" || typeof HTMLCanvasElement === "undefined" || !("captureStream" in HTMLCanvasElement.prototype)) return null;
   return TYPES.find((t) => MediaRecorder.isTypeSupported(t)) ?? null;
 }
+
+/** a clip is recording: the face screens draw the head without readouts or measurements */
+export const recording = { on: false };
 
 /** whether this browser can record a clip at all */
 export const canRecord = (): boolean => pickType() !== null;
@@ -31,6 +35,7 @@ export class Clip {
 
   constructor(source: HTMLCanvasElement, audio: MediaStream) {
     this.type = pickType()!;
+    recording.on = true;
     this.frame.width = W;
     this.frame.height = H;
     const ctx = this.frame.getContext("2d")!;
@@ -80,6 +85,7 @@ export class Clip {
   }
 
   private release(): void {
+    recording.on = false;
     cancelAnimationFrame(this.raf);
     for (const t of this.video) t.stop();
   }

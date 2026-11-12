@@ -25,8 +25,6 @@ import { presetOf, PRESETS } from "./body.ts";
 const AnatomyView3D = lazy(() => import("./components/AnatomyView3D.tsx").then((m) => ({ default: m.AnatomyView3D })));
 // the duet page (`?show=<id>`): two 3D heads replaying a pre-rendered song
 const DuetPage = lazy(() => import("./components/DuetPage.tsx").then((m) => ({ default: m.DuetPage })));
-// the front page: a tune, your words, the head singing them
-const SongPage = lazy(() => import("./components/SongPage.tsx").then((m) => ({ default: m.SongPage })));
 
 /** the show to play, from `?show=<id>` (a plain folder name under public/shows) */
 function showId(): string | null {
@@ -64,9 +62,6 @@ function TopBar() {
         ]}
       />
       <div className="topbar-right">
-        <a className="song-link" href="./">
-          Song
-        </a>
         <label className="volume">
           <span>Volume</span>
           <input type="range" min={0} max={1} step={0.01} value={volume} onChange={(e) => setVolume(Number(e.target.value))} style={{ "--pos": `${volume * 100}%` } as React.CSSProperties} />
@@ -192,12 +187,7 @@ export function App() {
         <DuetPage id={show} />
       </Suspense>
     );
-  if (new URLSearchParams(window.location.search).has("studio")) return <Wall />;
-  return (
-    <Suspense fallback={null}>
-      <SongPage />
-    </Suspense>
-  );
+  return <Wall />;
 }
 
 function Wall() {

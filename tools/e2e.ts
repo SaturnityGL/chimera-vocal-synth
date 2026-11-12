@@ -8,8 +8,6 @@ import { mkdirSync } from "node:fs";
 
 const url = process.argv[2] ?? "http://127.0.0.1:5318/";
 const outDir = process.argv[3] ?? "out/e2e";
-// the front page is the Song page; every tab is behind ?studio
-const studio = new URL("?studio", url).href;
 mkdirSync(outDir, { recursive: true });
 
 const browser = await chromium.launch({
@@ -26,7 +24,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
     else logs.push(`[${tag}] ${t}`);
   });
   page.on("pageerror", (e) => errors.push(`[${tag}] pageerror: ${e.message}`));
-  await page.goto(studio, { waitUntil: "networkidle" });
+  await page.goto(url, { waitUntil: "networkidle" });
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${outDir}/${tag}-0-idle.png` });
   // the app opens on Sing; this run starts in Play
@@ -169,12 +167,12 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   if (!(after < 1e-3)) errors.push(`[${tag}] voice still sounding after the sung notes: ${after}`);
   if (sylBefore === sylAfter) errors.push(`[${tag}] the syllable cursor did not move (${sylBefore})`);
   // a menu isn't an instrument: a letter typed in it picks an entry, it doesn't play a note
-  await page.getByRole("combobox", { name: "Song" }).focus();
+  await page.getByRole("combobox", { name: "Tune" }).focus();
   await page.keyboard.down("d");
   const menuNotes = await page.locator(".keys .key.down").count();
   await page.keyboard.up("d");
-  if (menuNotes) errors.push(`[${tag}] a key typed in the song menu played a note`);
-  await page.getByRole("combobox", { name: "Song" }).selectOption("Made of air");
+  if (menuNotes) errors.push(`[${tag}] a key typed in the tune menu played a note`);
+  await page.getByRole("combobox", { name: "Tune" }).selectOption({ label: "Dreamy" });
   await page.getByRole("button", { name: /^Sing$/ }).click();
   await page.waitForTimeout(2200);
   const demoRms = await rms();
@@ -183,9 +181,9 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.getByRole("button", { name: /^Stop$/ }).click();
   await page.waitForTimeout(700);
   const demoStopped = await rms();
-  logs.push(`[${tag}] sing demo: rms ${demoRms.toFixed(4)} on "${demoNow}", after stop ${demoStopped.toFixed(4)}`);
-  if (!(demoRms > 0.01) || !demoNow) errors.push(`[${tag}] demo song not singing (rms ${demoRms}, syllable ${demoNow})`);
-  if (!(demoStopped < 1e-3)) errors.push(`[${tag}] demo still sounding after stop: ${demoStopped}`);
+  logs.push(`[${tag}] sing a tune: rms ${demoRms.toFixed(4)} on "${demoNow}", after stop ${demoStopped.toFixed(4)}`);
+  if (!(demoRms > 0.01) || !demoNow) errors.push(`[${tag}] the tune is not singing the lyrics (rms ${demoRms}, syllable ${demoNow})`);
+  if (!(demoStopped < 1e-3)) errors.push(`[${tag}] the tune still sounding after stop: ${demoStopped}`);
   // bestiary: every creature, its first call, a key in held-voice mode, and the sustain toggle
   await page.getByRole("radio", { name: "Bestiary" }).click();
   await page.waitForTimeout(300);
@@ -286,7 +284,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
       return calls === 1 ? Promise.reject(new Error("worklet blocked by the test")) : add.apply(this, a);
     };
   });
-  await page.goto(studio, { waitUntil: "networkidle" });
+  await page.goto(url, { waitUntil: "networkidle" });
   await page.getByRole("radio", { name: "Play" }).click();
   await page.getByRole("button", { name: /^Breathe$/ }).click();
   const failed = await page.getByText(/Audio could not start/).waitFor({ timeout: 10000 }).then(() => true, () => false);
@@ -307,7 +305,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
 {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.on("pageerror", (e) => errors.push(`[first-key] pageerror: ${e.message}`));
-  await page.goto(studio, { waitUntil: "networkidle" });
+  await page.goto(url, { waitUntil: "networkidle" });
   await page.getByRole("radio", { name: "Sing" }).click();
   await page.keyboard.down("d");
   await page.waitForTimeout(1200);
@@ -334,7 +332,7 @@ async function run(viewport: { width: number; height: number }, tag: string) {
       }
     };
   });
-  await page.goto(studio, { waitUntil: "networkidle" });
+  await page.goto(url, { waitUntil: "networkidle" });
   await page.getByRole("radio", { name: "Play" }).click();
   await page.getByRole("button", { name: /^Breathe$/ }).click();
   await page.waitForTimeout(1500);
@@ -347,40 +345,41 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.close();
 }
 
-// the Song page: Play sings the words, and Video records a clip to save
+// Sing's Video: sings the lyrics to the tune again into a clip to save; the face screen leaves out
+// its readouts while it records
 {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, acceptDownloads: true });
-  page.on("console", (m) => m.type() === "error" && errors.push(`[song] ${m.text()}`));
-  page.on("pageerror", (e) => errors.push(`[song] pageerror: ${e.message}`));
+  page.on("console", (m) => m.type() === "error" && errors.push(`[video] ${m.text()}`));
+  page.on("pageerror", (e) => errors.push(`[video] pageerror: ${e.message}`));
   await page.goto(url, { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: /^Play$/ }).click();
-  await page.waitForTimeout(1500);
-  const rms = await page.evaluate(() => {
-    // @ts-expect-error debug handle
-    return window.__chimeraEngine?.latest?.t?.outRms ?? -1;
-  });
-  logs.push(`[song] singing the default words: rms ${rms.toFixed(4)}`);
-  if (!(rms > 0.01)) errors.push(`[song] Play made no sound (${rms})`);
-  await page.getByRole("button", { name: /^Stop$/ }).click();
-  await page.locator(".song-words textarea").fill("one two three");
+  await page.locator(".lyrics textarea").fill("one two three");
+  await page.getByRole("combobox", { name: "Tune" }).selectOption({ label: "Playful" });
   await page.getByRole("button", { name: /^Video$/ }).click();
+  await page.getByRole("button", { name: /^Cancel$/ }).waitFor({ timeout: 10000 });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: `${outDir}/video-recording.png` });
   const save = page.getByRole("link", { name: /^Save$/ });
   const saved = await save.waitFor({ timeout: 20000 }).then(() => true, () => false);
-  if (!saved) errors.push("[song] Video never offered a clip to save");
+  if (!saved) errors.push("[video] Video never offered a clip to save");
   else {
     const [dl] = await Promise.all([page.waitForEvent("download"), save.click()]);
     const size = (await (await dl.createReadStream()).toArray()).reduce((n, b: Buffer) => n + b.length, 0);
-    logs.push(`[song] clip ${dl.suggestedFilename()}: ${size} bytes`);
-    if (size < 10000) errors.push(`[song] the clip is nearly empty (${size} bytes)`);
+    logs.push(`[video] clip ${dl.suggestedFilename()}: ${size} bytes`);
+    if (size < 10000) errors.push(`[video] the clip is nearly empty (${size} bytes)`);
   }
+  // the words and the tune come back on reload
+  await page.reload({ waitUntil: "networkidle" });
+  const words = await page.locator(".lyrics textarea").inputValue();
+  const tune = await page.getByRole("combobox", { name: "Tune" }).inputValue();
+  if (words !== "one two three" || tune !== "playful") errors.push(`[video] the song didn't come back on reload: "${words}" to ${tune}`);
   await page.close();
 }
 
 // two taps on Video while the audio is still starting make one clip: the first start gives way (it
-// used to leave a second recorder running that Cancel couldn't reach); the voice comes back on reload
+// used to leave a second recorder running that Cancel couldn't reach)
 {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  page.on("pageerror", (e) => errors.push(`[song-twice] pageerror: ${e.message}`));
+  page.on("pageerror", (e) => errors.push(`[video-twice] pageerror: ${e.message}`));
   await page.addInitScript(() => {
     const Rec = window.MediaRecorder;
     const w = window as unknown as { __recorders: number };
@@ -393,22 +392,18 @@ async function run(viewport: { width: number; height: number }, tag: string) {
     };
   });
   await page.goto(url, { waitUntil: "networkidle" });
-  await page.getByRole("radio", { name: /^Female$/ }).click();
-  await page.locator(".song-words textarea").fill("one two");
+  await page.locator(".lyrics textarea").fill("one two");
   // both taps land before the first has started the audio (a second Playwright click would wait,
   // and then find Cancel)
   await page.evaluate(() => {
-    const b = [...document.querySelectorAll<HTMLButtonElement>(".song-side button")].find((x) => x.textContent === "Video")!;
+    const b = [...document.querySelectorAll<HTMLButtonElement>(".action-bar button")].find((x) => x.textContent === "Video")!;
     b.click();
     b.click();
   });
-  await page.getByRole("link", { name: /^Save$/ }).waitFor({ timeout: 20000 }).catch(() => errors.push("[song-twice] no clip after two taps"));
+  await page.getByRole("link", { name: /^Save$/ }).waitFor({ timeout: 20000 }).catch(() => errors.push("[video-twice] no clip after two taps"));
   const recorders = await page.evaluate(() => (window as unknown as { __recorders: number }).__recorders);
-  logs.push(`[song-twice] two taps on Video: ${recorders} recorder(s)`);
-  if (recorders !== 1) errors.push(`[song-twice] two taps on Video made ${recorders} recorders (want 1)`);
-  await page.reload({ waitUntil: "networkidle" });
-  const female = await page.getByRole("radio", { name: /^Female$/ }).getAttribute("aria-checked");
-  if (female !== "true") errors.push("[song-twice] the last song's voice (Female) didn't come back on reload");
+  logs.push(`[video-twice] two taps on Video: ${recorders} recorder(s)`);
+  if (recorders !== 1) errors.push(`[video-twice] two taps on Video made ${recorders} recorders (want 1)`);
   await page.close();
 }
 
@@ -416,6 +411,6 @@ await run({ width: 1440, height: 980 }, "desktop");
 await run({ width: 390, height: 844 }, "mobile");
 await browser.close();
 console.log("console errors:", errors.length ? "\n" + errors.join("\n") : "none");
-console.log(logs.filter((l) => /load|rate|warn|transcription|example|creature|held|back to|beatbox|silence|sing|octave|retry|song/i.test(l)).slice(0, 52).join("\n"));
+console.log(logs.filter((l) => /load|rate|warn|transcription|example|creature|held|back to|beatbox|silence|sing|octave|retry|song|video/i.test(l)).slice(0, 52).join("\n"));
 // a run that collected errors fails, so CI and agents can't read it as a pass
 if (errors.length) process.exit(1);
