@@ -10,8 +10,8 @@ for tests and the `chimera` CLI.
 1. **One instrument**: a physically modeled voice (lungs, vocal folds, throat, mouth). No
    samples, no neural audio.
 2. **The web app is the primary surface**: anyone should be able to make songs in it without
-   an LLM's help. Mobile is the likely next surface. The plugin (CLAP/VST3/AU) still ships, but
-   it's secondary.
+   an LLM's help, and share them. Its front page is the Song page. An iOS app comes next, ahead
+   of the plugin (CLAP/VST3/AU), which still ships but is secondary.
 3. **More realistic without losing what it is**: the robotic, primitive sound people like today
    stays available, and every realism change is checked by ear against it.
 4. **Languages enter through one shared front-end design**, not one-off hacks. Each needs a
@@ -22,6 +22,9 @@ for tests and the `chimera` CLI.
 
 ## What it does
 
+- **Song** (the front page): pick a tune (four originals), type your words, and the head sings
+  them, each line fitted to a phrase of the tune; **Video** sings it again into a 9:16 clip to
+  share. The tabs below are the studio, at `?studio`.
 - **Play**: drag the tongue, lips and jaw in a live cutaway of the head; vowel pad, encoders,
   computer keyboard and Web MIDI.
 - **Speak**: English text (CMUdict with a letter-to-sound fallback) or IPA, turned into
