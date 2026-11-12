@@ -27,10 +27,16 @@ const SAVED = "chimera-song";
 
 const overlay = mouthWords(songWord, V.green);
 
-function loadSaved(): { tune: string; words: string } {
+interface Saved {
+  tune: string;
+  words: string;
+  voice?: BodyName;
+}
+
+function loadSaved(): Saved {
   try {
-    const s = JSON.parse(localStorage.getItem(SAVED) ?? "null") as { tune?: unknown; words?: unknown } | null;
-    if (s && typeof s.tune === "string" && typeof s.words === "string") return { tune: s.tune, words: s.words };
+    const s = JSON.parse(localStorage.getItem(SAVED) ?? "null") as { tune?: unknown; words?: unknown; voice?: unknown } | null;
+    if (s && typeof s.tune === "string" && typeof s.words === "string") return { tune: s.tune, words: s.words, voice: typeof s.voice === "string" && s.voice in PRESETS ? (s.voice as BodyName) : undefined };
   } catch {
     // no storage, or not ours: start fresh
   }
@@ -60,14 +66,22 @@ export function SongPage() {
   const clipRef = useRef<Clip | null>(null);
   const [recording, setRecording] = useState(false);
   const [clip, setClip] = useState<{ file: File; url: string } | null>(null);
+  /** bumped by every start and stop: a start still waiting for the audio then gives up */
+  const tokenRef = useRef(0);
+  const voice = presetOf(body);
+
+  // the last song's voice comes back with it
+  useEffect(() => {
+    if (saved.voice && saved.voice !== presetOf(useStore.getState().body)) setBody(PRESETS[saved.voice]);
+  }, [saved, setBody]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(SAVED, JSON.stringify({ tune: tuneId, words }));
+      localStorage.setItem(SAVED, JSON.stringify({ tune: tuneId, words, voice: voice ?? undefined }));
     } catch {
       // private window: the song just isn't kept
     }
-  }, [tuneId, words]);
+  }, [tuneId, words, voice]);
 
   useEffect(() => {
     const id = setInterval(tickSong, 50);
@@ -83,6 +97,7 @@ export function SongPage() {
   useEffect(() => () => void (clip && URL.revokeObjectURL(clip.url)), [clip]);
 
   function stop() {
+    tokenRef.current++;
     stopSong();
     clipRef.current?.cancel();
     clipRef.current = null;
@@ -91,16 +106,18 @@ export function SongPage() {
 
   async function play() {
     if (playing || recording) return stop();
+    const token = ++tokenRef.current;
     const song = await prepare(tune, words);
-    if (song) playSong(song.notes, tune.bpm, song.body);
+    if (song && token === tokenRef.current) playSong(song.notes, tune.bpm, song.body);
   }
 
   async function video() {
-    if (playing || recording) stop();
+    stop();
+    const token = tokenRef.current;
     const song = await prepare(tune, words);
     const canvas = headRef.current?.querySelector("canvas");
     const audio = engine.recordStream();
-    if (!song || !canvas || !audio) return;
+    if (!song || !canvas || !audio || token !== tokenRef.current) return;
     const rec = new Clip(canvas, audio);
     clipRef.current = rec;
     setRecording(true);
@@ -151,7 +168,7 @@ export function SongPage() {
           <textarea value={words} onChange={(e) => setWords(e.target.value)} rows={3} maxLength={600} aria-label="Your words" placeholder="Your words" />
           <Segmented<BodyName>
             label="Voice"
-            value={presetOf(body)}
+            value={voice}
             onChange={(b) => setBody(PRESETS[b])}
             options={[
               { value: "male", label: "Male" },

@@ -26,6 +26,8 @@ export class Clip {
   private chunks: Blob[] = [];
   private raf = 0;
   private type: string;
+  /** the frame's capture track: ours to stop (the audio track is the engine's, shared) */
+  private video: MediaStreamTrack[];
 
   constructor(source: HTMLCanvasElement, audio: MediaStream) {
     this.type = pickType()!;
@@ -46,8 +48,13 @@ export class Clip {
       this.raf = requestAnimationFrame(draw);
     };
     draw();
-    const stream = new MediaStream([...this.frame.captureStream(30).getVideoTracks(), ...audio.getAudioTracks()]);
-    this.rec = new MediaRecorder(stream, { mimeType: this.type, videoBitsPerSecond: 5_000_000 });
+    this.video = this.frame.captureStream(30).getVideoTracks();
+    try {
+      this.rec = new MediaRecorder(new MediaStream([...this.video, ...audio.getAudioTracks()]), { mimeType: this.type, videoBitsPerSecond: 5_000_000 });
+    } catch (e) {
+      this.release();
+      throw e;
+    }
     this.rec.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
     this.rec.start(500);
   }
@@ -57,6 +64,7 @@ export class Clip {
     cancelAnimationFrame(this.raf);
     return new Promise((resolve) => {
       this.rec.onstop = () => {
+        this.release();
         const type = this.type.split(";")[0];
         resolve(new File(this.chunks, `${name}.${type === "video/mp4" ? "mp4" : "webm"}`, { type }));
       };
@@ -66,8 +74,13 @@ export class Clip {
 
   /** Throw it away. */
   cancel(): void {
-    cancelAnimationFrame(this.raf);
     this.rec.onstop = null;
     if (this.rec.state !== "inactive") this.rec.stop();
+    this.release();
+  }
+
+  private release(): void {
+    cancelAnimationFrame(this.raf);
+    for (const t of this.video) t.stop();
   }
 }

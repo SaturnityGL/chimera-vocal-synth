@@ -376,6 +376,42 @@ async function run(viewport: { width: number; height: number }, tag: string) {
   await page.close();
 }
 
+// two taps on Video while the audio is still starting make one clip: the first start gives way (it
+// used to leave a second recorder running that Cancel couldn't reach); the voice comes back on reload
+{
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.on("pageerror", (e) => errors.push(`[song-twice] pageerror: ${e.message}`));
+  await page.addInitScript(() => {
+    const Rec = window.MediaRecorder;
+    const w = window as unknown as { __recorders: number };
+    w.__recorders = 0;
+    window.MediaRecorder = class extends Rec {
+      constructor(...a: ConstructorParameters<typeof Rec>) {
+        super(...a);
+        w.__recorders++;
+      }
+    };
+  });
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.getByRole("radio", { name: /^Female$/ }).click();
+  await page.locator(".song-words textarea").fill("one two");
+  // both taps land before the first has started the audio (a second Playwright click would wait,
+  // and then find Cancel)
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll<HTMLButtonElement>(".song-side button")].find((x) => x.textContent === "Video")!;
+    b.click();
+    b.click();
+  });
+  await page.getByRole("link", { name: /^Save$/ }).waitFor({ timeout: 20000 }).catch(() => errors.push("[song-twice] no clip after two taps"));
+  const recorders = await page.evaluate(() => (window as unknown as { __recorders: number }).__recorders);
+  logs.push(`[song-twice] two taps on Video: ${recorders} recorder(s)`);
+  if (recorders !== 1) errors.push(`[song-twice] two taps on Video made ${recorders} recorders (want 1)`);
+  await page.reload({ waitUntil: "networkidle" });
+  const female = await page.getByRole("radio", { name: /^Female$/ }).getAttribute("aria-checked");
+  if (female !== "true") errors.push("[song-twice] the last song's voice (Female) didn't come back on reload");
+  await page.close();
+}
+
 await run({ width: 1440, height: 980 }, "desktop");
 await run({ width: 390, height: 844 }, "mobile");
 await browser.close();
