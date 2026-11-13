@@ -10,7 +10,7 @@ const BASES: Record<string, number> = { male: 48, female: 57, child: 60 };
 /** the lowest key, from the nearest preset body (so the keys stay on whole octaves of C/A) */
 const BASE = (b: BodyMix) => BASES[nearestBody(b)];
 
-export function Keys() {
+export function Keys({ octaves = 2, below = 0 }: { octaves?: number; below?: number } = {}) {
   const body = useStore((s) => s.body);
   const held = useStore((s) => s.heldNotes);
   const noteOn = useStore((s) => s.noteOn);
@@ -79,7 +79,7 @@ export function Keys() {
     };
   }, [noteOn, noteOff, start]);
 
-  const notes = Array.from({ length: 25 }, (_, i) => base + i);
+  const notes = Array.from({ length: octaves * 12 + 1 }, (_, i) => base - below * 12 + i);
   const isBlack = (m: number) => [1, 3, 6, 8, 10].includes(((m % 12) + 12) % 12);
   const whites = notes.filter((m) => !isBlack(m));
   const press = (m: number) => (e: React.PointerEvent) => {
@@ -101,7 +101,7 @@ export function Keys() {
             const b = m + 1;
             const hasBlack = isBlack(b) && i < whites.length - 1;
             return hasBlack ? (
-              <button key={b} className={`key black${held.includes(b) ? " down" : ""}`} style={{ left: `calc(${((i + 1) / whites.length) * 100}% - 1.1%)` }} onPointerDown={press(b)} aria-label={`Note ${b}`} />
+              <button key={b} className={`key black${held.includes(b) ? " down" : ""}`} style={{ left: `calc(${((i + 1) / whites.length) * 100}% - ${16.5 / whites.length}%)`, width: `${33 / whites.length}%` }} onPointerDown={press(b)} aria-label={`Note ${b}`} />
             ) : null;
           })}
         </div>

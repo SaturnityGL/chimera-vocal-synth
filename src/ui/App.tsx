@@ -15,7 +15,7 @@ import { SpeakRight, speechInfo, speechSlots, speechWords } from "./components/S
 import { BestiaryRight } from "./components/BestiaryPanel.tsx";
 import { CreatureView } from "./components/CreatureView.tsx";
 import { BeatboxRight, BeatOverlay, beatInfo, beatSlots } from "./components/BeatboxPanel.tsx";
-import { SingRight, singInfo, singWords } from "./components/SingPanel.tsx";
+import { SingKeys, SingRight, singInfo, singWords } from "./components/SingPanel.tsx";
 import type { Mode } from "./store.ts";
 import type { BodyName } from "../worklet/protocol.ts";
 import { BodyPad } from "./components/BodyPad.tsx";
@@ -198,6 +198,7 @@ function Wall() {
       <main className={`wall wall-${mode}`}>
         <LeftScreen />
         {mode === "play" ? <PlayRight /> : mode === "speak" ? <SpeakRight /> : mode === "sing" ? <SingRight /> : mode === "beatbox" ? <BeatboxRight /> : <BestiaryRight />}
+        {mode === "sing" && <SingKeys />}
       </main>
     </div>
   );
