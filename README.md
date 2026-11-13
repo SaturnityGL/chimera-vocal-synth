@@ -4,10 +4,12 @@
 >
 > **Added in this fork:**
 > - **Always-on take recording** in the Sing tab: every note you play on the keys or MIDI is recorded with your timing, and Sing plays it back as "Your take" (Tempo and Key apply). The take survives reloads; Clear starts over.
-> - **Pitch editor** for your take: turn on **Edit** in the Pitch screen to see the take as note blocks on a timeline. Drag a block up or down to change its pitch (it sings the new note), scroll through time, Shift+scroll for pitch, Ctrl+scroll to zoom, drag the background to pan. A playhead follows the take while Sing plays it.
+> - **Pitch editor** for your take: turn on **Edit** in the Pitch screen to see the take as note blocks on a timeline. Drag a block up or down to change its pitch (it sings the new note) and sideways to move it in time, drag its right end to make it longer or shorter, and hold Ctrl while dragging to move everything after it too (handy for closing a gap). Scroll through time, Shift+scroll for pitch, Ctrl+scroll to zoom, drag the background to pan. A playhead follows the take while Sing plays it.
 > - **Wider keyboard** in Play, Sing, Beatbox and Bestiary: the keys run the full width of the window under both panels, four octaves instead of two.
 > - **Reset** button above the head: puts the tongue, lips and jaw back where they start after you've dragged them around.
 > - **Import MIDI** in the Sing tab: pick a local `.mid` file and its melody becomes the take, timing and all, singing whatever is in the Lyrics box one syllable per note. Chords sing their top note, drums are skipped, and a file with several tracks gets a track picker. The file never leaves your browser.
+> - **Backing tracks** for imported MIDI: pick which track is the voice in **Sung track**, and the file's other tracks play underneath on a simple piano, following Tempo, Key and Volume. **Backing** turns tracks on or off, even mid-song.
+> - **One note per word**: end a word with `+` in the lyrics (`fire+`) and it sings the whole word on a single note instead of a syllable per note. Handy when a MIDI gives one note to a word the voice would split.
 
 A physical-modeling voice synthesizer in the browser. Every sound comes from a simulated
 airway (lungs, vocal folds or syrinx, a branched vocal tract, lips, nose), not from samples.

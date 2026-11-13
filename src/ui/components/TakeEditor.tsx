@@ -1,7 +1,7 @@
 import { useEffect, useRef, type PointerEvent } from "react";
 import { usePhosphor } from "../usePhosphor.ts";
 import { useStore } from "../store.ts";
-import { useSing, takeBlocks, moveTakeNote, auditionTake, takePlayhead, type Take, type TakeBlock } from "../singing.ts";
+import { useSing, takeBlocks, moveTakeNote, retimeTakeNote, auditionTake, takePlayhead, type Take, type TakeBlock } from "../singing.ts";
 import { TEXT, V } from "../colors.ts";
 import { beam, label, seg } from "../render/vector.ts";
 
@@ -12,12 +12,15 @@ const BLACK = [1, 3, 6, 8, 10];
 const NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
 const ZOOM_MIN = 0.03;
 const ZOOM_MAX = 0.6;
+const EDGE = 6;
 
-type Drag = { kind: "note"; block: TakeBlock; y0: number; midi: number } | { kind: "pan"; x0: number; y0: number; t: number; bottom: number; moved: boolean };
+type NoteDrag = { kind: "note"; block: TakeBlock; end: boolean; x0: number; y0: number; midi: number; t0: number; t1: number; ctrl: boolean; ripple: boolean; moved: boolean };
+type Drag = NoteDrag | { kind: "pan"; x0: number; y0: number; t: number; bottom: number; moved: boolean };
 
 /**
  * The take as note blocks on its own timeline: drag a block up or down to change its pitch (it
- * sings at the new pitch on release), wheel through time, Shift+wheel through pitch, Ctrl+wheel to
+ * sings at the new pitch on release) and sideways to move it in time, drag its right end to change
+ * its length, hold Ctrl while dragging to move everything after it too, wheel through time, Shift+wheel through pitch, Ctrl+wheel to
  * zoom, drag the background to pan. The playhead follows the take while Sing plays it.
  */
 export function TakeEditor() {
@@ -89,12 +92,14 @@ export function TakeEditor() {
     }
 
     const d = drag.current;
+    const nd = d?.kind === "note" ? d : null;
     const bh = barH();
     for (const b of bs) {
-      const x0 = x(b.t0), x1 = Math.max(x0 + 4, x(b.t1));
+      const moving = nd?.block.on === b.on;
+      const shift = nd && !moving && nd.ripple && b.on > nd.block.on ? nd.t0 - nd.block.t0 : 0;
+      const x0 = x(moving ? nd.t0 : b.t0 + shift), x1 = Math.max(x0 + 4, x(moving ? nd.t1 : b.t1 + shift));
       if (x1 < LEFT || x0 > w) continue;
-      const moving = d?.kind === "note" && d.block.on === b.on;
-      const midi = moving ? d.midi : b.midi;
+      const midi = moving ? nd.midi : b.midi;
       const yc = y(midi);
       const live = head !== null && head >= b.t0 && head <= b.t1;
       const r = new Path2D();
@@ -118,16 +123,17 @@ export function TakeEditor() {
     if (!bs.length) label(ctx, "PLAY THE KEYS TO RECORD A TAKE", LEFT + 12, h / 2, { size: 10, color: TEXT.secondary, ls: 0.12 });
   });
 
-  const hit = (px: number, py: number): TakeBlock | null => {
+  const hit = (px: number, py: number): { block: TakeBlock; end: boolean } | null => {
     const bs = cache.current.blocks;
     const bh = barH();
     for (let k = bs.length - 1; k >= 0; k--) {
       const b = bs[k];
       const x0 = x(b.t0), x1 = Math.max(x0 + 6, x(b.t1));
-      if (px >= x0 - 2 && px <= x1 + 2 && Math.abs(py - y(b.midi)) <= bh / 2 + 3) return b;
+      if (px >= x0 - 2 && px <= x1 + 3 && Math.abs(py - y(b.midi)) <= bh / 2 + 3) return { block: b, end: b.off >= 0 && px >= x1 - EDGE && x1 - x0 > EDGE * 2 };
     }
     return null;
   };
+  const cursorFor = (h: { end: boolean } | null) => (h ? (h.end ? "ew-resize" : "move") : "grab");
   const at = (e: PointerEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     return [e.clientX - r.left, e.clientY - r.top] as const;
@@ -136,21 +142,34 @@ export function TakeEditor() {
   const down = (e: PointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return;
     const [px, py] = at(e);
-    const b = hit(px, py);
+    const h = hit(px, py);
     e.currentTarget.setPointerCapture(e.pointerId);
-    drag.current = b ? { kind: "note", block: b, y0: py, midi: b.midi } : { kind: "pan", x0: px, y0: py, t: view.current.t, bottom: view.current.bottom, moved: false };
-    e.currentTarget.style.cursor = b ? "ns-resize" : "grabbing";
+    if (h) {
+      const b = h.block;
+      drag.current = { kind: "note", block: b, end: h.end, x0: px, y0: py, midi: b.midi, t0: b.t0, t1: b.t1, ctrl: e.ctrlKey || e.metaKey, ripple: e.ctrlKey || e.metaKey, moved: false };
+    } else drag.current = { kind: "pan", x0: px, y0: py, t: view.current.t, bottom: view.current.bottom, moved: false };
+    e.currentTarget.style.cursor = h ? cursorFor(h) : "grabbing";
   };
   const move = (e: PointerEvent<HTMLCanvasElement>) => {
     const [px, py] = at(e);
     const d = drag.current;
     const rowH = geo.current.rowH;
     if (!d) {
-      e.currentTarget.style.cursor = hit(px, py) ? "ns-resize" : "grab";
+      e.currentTarget.style.cursor = cursorFor(hit(px, py));
       return;
     }
     if (d.kind === "note") {
-      d.midi = Math.max(24, Math.min(96, d.block.midi + Math.round((d.y0 - py) / rowH)));
+      const b = d.block;
+      if (Math.abs(px - d.x0) > 2 || Math.abs(py - d.y0) > 2) d.moved = true;
+      if (!d.moved) return;
+      const dt = (px - d.x0) / view.current.pxPerMs;
+      d.ripple = d.ctrl || e.ctrlKey || e.metaKey;
+      if (d.end) d.t1 = Math.max(b.t0 + 20, b.t1 + dt);
+      else {
+        d.midi = Math.max(24, Math.min(96, b.midi + Math.round((d.y0 - py) / rowH)));
+        d.t0 = Math.max(0, b.t0 + dt);
+        d.t1 = d.t0 + (b.t1 - b.t0);
+      }
       return;
     }
     const v = view.current;
@@ -164,8 +183,11 @@ export function TakeEditor() {
     drag.current = null;
     e.currentTarget.style.cursor = "grab";
     if (d?.kind !== "note") return;
-    if (d.midi !== d.block.midi) moveTakeNote(d.block, d.midi);
-    auditionTake(d.block, d.midi, useStore.getState().body);
+    const b = d.block;
+    if (d.midi !== b.midi) moveTakeNote(b, d.midi);
+    const timed = Math.abs(d.t0 - b.t0) >= 1 || Math.abs(d.t1 - b.t1) >= 1;
+    if (timed) retimeTakeNote(b, d.t0, d.t1, d.ripple);
+    if (d.midi !== b.midi || !d.moved) auditionTake(b, d.midi, useStore.getState().body);
   };
   const cancel = () => {
     drag.current = null;
@@ -199,7 +221,7 @@ export function TakeEditor() {
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={cancel}
-      aria-label="Take editor: your take's notes on a timeline. Drag a note up or down to change its pitch; scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom."
+      aria-label="Take editor: your take's notes on a timeline. Drag a note up or down to change its pitch and sideways to move it in time, drag its right end to change its length, hold Ctrl to move everything after it too; scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom."
     />
   );
 }

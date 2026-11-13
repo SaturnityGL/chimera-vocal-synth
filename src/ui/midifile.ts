@@ -157,6 +157,17 @@ export function melodyLine(notes: MidiNote[]): MidiNote[] {
   });
 }
 
+/** The track most likely to be the sung one: named like a voice or melody, else the one with the most notes. */
+export function pickVocal(tracks: MidiTrack[]): number {
+  const named = tracks.findIndex((t) => /vocal|voice|vox|sing|melody|lead|soprano/i.test(t.name));
+  if (named >= 0) return named;
+  let best = 0;
+  tracks.forEach((t, k) => {
+    if (t.notes.length > tracks[best].notes.length) best = k;
+  });
+  return best;
+}
+
 /** Fold a note into the voice's range by octaves. */
 export function inRange(midi: number, lo = 24, hi = 96): number {
   let m = midi;

@@ -56,6 +56,15 @@ fn lyrics_words_melisma_phrase_ends_unreduced_function_words() {
     assert!(syl[1].word_end && !syl[0].word_end);
 }
 
+#[test]
+fn a_plus_after_a_word_joins_its_syllables_onto_one_note() {
+    let syl = lyrics_to_syllables("twinkle+ little star+, wonder", &word);
+    let joins: Vec<bool> = syl.iter().map(|s| s.join == Some(true)).collect();
+    assert_eq!(joins, [true, false, false, false, false, false, false]);
+    assert!(syl[4].phrase_end);
+    assert_eq!(syl.len(), 7);
+}
+
 /// Each syllable as onset+nucleus+coda IPA, joined with "."; a stop's aspiration, when its front end
 /// decides it, as ʰ (aspirated) or ˭ (unaspirated)
 fn sung(text: &str) -> String {

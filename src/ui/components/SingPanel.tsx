@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.ts";
 import { useSing, playTune, stopSinging, soundingSyllable, sungNow, TUNES, TAKE_ID, ensureDictionary, importTake } from "../singing.ts";
-import { parseMidi, melodyLine, inRange, type MidiTrack } from "../midifile.ts";
+import { parseMidi, melodyLine, inRange, pickVocal, type MidiTrack } from "../midifile.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { canRecord, Clip } from "../../song/record.ts";
 import { mouthWords } from "../mouthWords.ts";
@@ -60,7 +60,7 @@ function Lyrics() {
         rows={Math.min(4, lyrics.split("\n").length)}
         aria-label="Lyrics to sing"
         placeholder="Type the words to sing"
-        title="Sing sings these words to the tune, a line to each of its phrases. Each key sings the next syllable; hold a key while you press the next one to sing legato. A lone “-” between words holds a vowel over several notes; hyphens split a word your way (“ti-ger”)."
+        title="Sing sings these words to the tune, a line to each of its phrases. Each key sings the next syllable; hold a key while you press the next one to sing legato. A lone “-” between words holds a vowel over several notes; hyphens split a word your way (“ti-ger”); a “+” after a word sings all of it on one note (“fire+”)."
       />
       <div className="syllables" role="group" aria-label="Syllables. Each note sings the marked one; choose another to start there.">
         {syllables.map((s, i) => (
@@ -255,15 +255,12 @@ function SingActions() {
 }
 
 /** the tracks worth singing, most notes first */
-function singable(tracks: MidiTrack[]): MidiTrack[] {
-  return tracks
-    .map((t) => ({ ...t, notes: melodyLine(t.notes).map((n) => ({ ...n, midi: inRange(n.midi) })) }))
-    .sort((a, b) => b.notes.length - a.notes.length);
-}
+const trackName = (t: MidiTrack, k: number) => t.name || `Track ${k + 1}`;
 
 /**
  * Import MIDI: a local .mid file's melody becomes the take (nothing leaves the browser). Its notes
- * keep their timing and sing the Lyrics box a syllable each; a file with several tracks gets a picker.
+ * keep their timing and sing the Lyrics box a syllable each; a file with several tracks gets a picker
+ * for the sung one, and the rest play under it on piano.
  */
 function MidiImport() {
   const source = useSing((s) => s.take?.source ?? null);
@@ -272,15 +269,17 @@ function MidiImport() {
   const [error, setError] = useState<string | null>(null);
   const use = (name: string, tracks: MidiTrack[], pick: number) => {
     setLoaded({ name, tracks, pick });
-    importTake(name, tracks[pick].notes);
+    const line = melodyLine(tracks[pick].notes).map((n) => ({ ...n, midi: inRange(n.midi) }));
+    const backing = tracks.flatMap((t, k) => (k === pick ? [] : [{ name: trackName(t, k), notes: t.notes }]));
+    importTake(name, line, backing);
   };
   const open = async (f: File | undefined) => {
     if (!f) return;
     setError(null);
     try {
-      const tracks = singable(parseMidi(await f.arrayBuffer()));
+      const tracks = parseMidi(await f.arrayBuffer());
       if (!tracks.length) throw new Error("no notes");
-      use(f.name.replace(/\.midi?$/i, ""), tracks, 0);
+      use(f.name.replace(/\.midi?$/i, ""), tracks, pickVocal(tracks));
     } catch {
       setLoaded(null);
       setError("Couldn't read any notes from that file");
@@ -304,14 +303,60 @@ function MidiImport() {
       </Chip>
       {picking && (
         <Menu
-          label="MIDI track"
+          label="Sung track"
           value={String(loaded.pick)}
-          options={loaded.tracks.map((t, k) => ({ value: String(k), label: `${t.name || `Track ${k + 1}`} (${t.notes.length})` }))}
+          options={loaded.tracks.map((t, k) => ({ value: String(k), label: `Sing: ${trackName(t, k)} (${t.notes.length})` }))}
           onChange={(v) => use(loaded.name, loaded.tracks, Number(v))}
         />
       )}
+      <BackingTracks />
       {error && <span className="midi-error">{error}</span>}
     </>
+  );
+}
+
+/** The imported file's other tracks, each played on piano under the voice or muted. */
+function BackingTracks() {
+  const backing = useSing((s) => (s.take?.source ? s.take.backing : undefined));
+  const setBackingOn = useSing((s) => s.setBackingOn);
+  const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  const toggle = () => {
+    const r = box.current?.getBoundingClientRect();
+    if (r && backing) {
+      const below = innerHeight - r.bottom;
+      setUp(below < Math.min(290, backing.length * 28 + 24) && r.top > below);
+    }
+    setOpen(!open);
+  };
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  if (!backing?.length) return null;
+  const on = backing.filter((b) => b.on).length;
+  return (
+    <span className="backing" ref={box}>
+      <Chip toggle={false} on={on > 0} aria-expanded={open} onClick={toggle} title="The file's other tracks, played on piano under the voice">
+        Backing {on}/{backing.length}
+      </Chip>
+      {open && (
+        <div className={up ? "backing-pop up" : "backing-pop"} role="group" aria-label="Backing tracks">
+          {backing.map((b, k) => (
+            <label key={k}>
+              <input type="checkbox" checked={b.on} onChange={(e) => setBackingOn(k, e.target.checked)} />
+              <span className="backing-name">{b.name}</span>
+              <span className="backing-n">{b.notes.length / 4}</span>
+            </label>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }
 
@@ -344,10 +389,10 @@ export function SingRight() {
       <Screen
         className="s-roll"
         title="Pitch"
-        sub={editing ? "Drag notes up or down" : ""}
+        sub={editing ? "Drag notes to move them, their ends to resize" : ""}
         tools={
           hasTake && (
-            <Chip on={edit} onClick={toggleEdit} title="Edit your take: drag a note up or down to change its pitch; scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom">
+            <Chip on={edit} onClick={toggleEdit} title="Edit your take: drag a note up or down to change its pitch and sideways to move it in time, drag its right end to change its length, hold Ctrl to move everything after it too; scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom">
               Edit
             </Chip>
           )

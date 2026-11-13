@@ -203,7 +203,8 @@ enum Token {
     Mark(char),
 }
 
-/// Words (with the index of the front end that claims them), melisma marks and phrase punctuation,
+/// Words (with the index of the front end that claims them), a "+" right after a word (its syllables
+/// share one note), melisma marks and phrase punctuation,
 /// in order. For English and Hangul this is
 /// `text.match(/[A-Za-z'][A-Za-z'\-]*|[가-힣]+|(?<=\s|^)[~-](?=\s|$)|[.,;:!?\n]/g)`.
 fn lyric_tokens(text: &str, front_ends: &[&dyn FrontEnd]) -> Vec<Token> {
@@ -219,6 +220,10 @@ fn lyric_tokens(text: &str, front_ends: &[&dyn FrontEnd]) -> Vec<Token> {
                 i += 1;
             }
             out.push(Token::Word(k, s[start..i].iter().collect()));
+            if i < s.len() && s[i] == '+' {
+                out.push(Token::Mark('+'));
+                i += 1;
+            }
             continue;
         }
         let melisma = (c == '~' || c == '-') && (i == 0 || js_is_space(s[i - 1])) && (i + 1 == s.len() || js_is_space(s[i + 1]));
@@ -236,6 +241,16 @@ pub fn read_lyrics(text: &str, front_ends: &[&dyn FrontEnd]) -> Vec<Syllable> {
     let mut out: Vec<Syllable> = Vec::new();
     for tok in lyric_tokens(&text.replace('’', "'"), front_ends) {
         match tok {
+            Token::Mark('+') => {
+                let n = out.len();
+                let mut k = n.saturating_sub(1);
+                while k > 0 && !out[k - 1].word_end {
+                    k -= 1;
+                }
+                for s in &mut out[k..n.saturating_sub(1)] {
+                    s.join = Some(true);
+                }
+            }
             Token::Mark(c) if is_lyric_punct(c) => {
                 if let Some(last) = out.last_mut() {
                     last.phrase_end = true;

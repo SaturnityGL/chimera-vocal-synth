@@ -205,6 +205,8 @@ export interface Syllable {
   nucleus: Segment;
   coda: Segment[];
   melisma?: boolean;
+  /** sung on the same note as the next syllable (a word written with a trailing "+") */
+  join?: boolean;
   wordEnd: boolean;
   phraseEnd: boolean;
 }

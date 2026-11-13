@@ -436,3 +436,42 @@ describe("a main button pressed before the audio is up", () => {
     useStore.setState({ startError: null });
   });
 });
+
+const { importTake, backingNotes, takeBlocks, retimeTakeNote, takeTimes } = await import("../src/ui/singing.ts");
+
+describe("an imported take: backing tracks, joined words, retimed notes", () => {
+
+  test("the other tracks become a backing on the take's clock, an intro before the voice kept", () => {
+    useSing.getState().setLyrics("la la");
+    importTake("song.mid", [{ t: 1500, dur: 400, midi: 60, vel: 90 }], [
+      { name: "Piano", notes: [{ t: 1000, dur: 500, midi: 48, vel: 80 }, { t: 1500, dur: 500, midi: 52, vel: 80 }] },
+      { name: "Bass", notes: [{ t: 1200, dur: 300, midi: 36, vel: 100 }] },
+    ]);
+    const take = useSing.getState().take!;
+    expect(take.events[0].t).toBe(500);
+    expect(take.backing!.map((b) => [b.name, b.on])).toEqual([["Piano", true], ["Bass", true]]);
+    expect(backingNotes(take).map((n) => [n.t, n.midi, n.track])).toEqual([[0, 48, 0], [200, 36, 1], [500, 52, 0]]);
+  });
+
+  test("a word ending in + sings all its syllables on one note", () => {
+    useSing.getState().setLyrics("tiger+ fly");
+    importTake("song.mid", [{ t: 0, dur: 300, midi: 60, vel: 90 }, { t: 400, dur: 300, midi: 62, vel: 90 }]);
+    expect(takeBlocks(useSing.getState().take!).map((b) => b.text)).toEqual(["tiger", "fly"]);
+  });
+
+  test("a note dragged in time moves alone, or with everything after it, and sings in its new order", () => {
+    useSing.getState().setLyrics("la ma no");
+    importTake("song.mid", [0, 1000, 3000].map((t, k) => ({ t, dur: 400, midi: 60 + k, vel: 90 })));
+    const blocks = () => takeBlocks(useSing.getState().take!);
+    retimeTakeNote(blocks()[2], 1500, 1900, true);
+    expect(blocks().map((b) => [b.t0, b.t1, b.midi])).toEqual([[0, 400, 60], [1000, 1400, 61], [1500, 1900, 62]]);
+    retimeTakeNote(blocks()[1], 600, 1000, true);
+    expect(blocks().map((b) => b.t0)).toEqual([0, 600, 1100]);
+    retimeTakeNote(blocks()[2], 200, 300);
+    expect(blocks().map((b) => [b.t0, b.midi, b.text])).toEqual([[0, 60, "la"], [200, 62, "ma"], [600, 61, "no"]]);
+    retimeTakeNote(blocks()[0], 0, 150);
+    expect(blocks()[0].t1).toBe(150);
+    const take = useSing.getState().take!;
+    expect(takeTimes(take)).toEqual(take.events.map((e) => e.t));
+  });
+});

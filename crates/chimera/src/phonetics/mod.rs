@@ -108,6 +108,9 @@ pub struct Syllable {
     /// continue the previous syllable's vowel at a new pitch
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub melisma: Option<bool>,
+    /// sung on the same note as the next syllable (a word written with a trailing "+")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join: Option<bool>,
     /// last syllable of a word (codas sound here; phrase breaks follow punctuation); may be left
     /// out of hand-written JSON (false)
     #[serde(default)]

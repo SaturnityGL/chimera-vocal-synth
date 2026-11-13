@@ -17,6 +17,7 @@ import type { Gesture } from "../wasm/types.ts";
 import { nearestBody, type BodyMix } from "./body.ts";
 import { TUNES } from "../song/tunes.ts";
 import { fitSong, la } from "../song/fit.ts";
+import { startBacking, stopBacking, type BackingNote } from "./backing.ts";
 
 /** A note on the piano roll, on the voice clock (s); t1 is null while it is held. */
 export interface RollNote {
@@ -52,6 +53,15 @@ export interface Take {
   events: TakeEvent[];
   /** the MIDI file it came from, if imported: then it sings whatever the Lyrics box says */
   source?: string;
+  /** an imported file's other tracks, played on piano under the voice */
+  backing?: BackingTrack[];
+}
+
+/** One of an imported file's other tracks: its notes as flat [t, dur, midi, vel] runs, ms on the take's clock. */
+export interface BackingTrack {
+  name: string;
+  on: boolean;
+  notes: number[];
 }
 
 interface SingState {
@@ -80,6 +90,8 @@ interface SingState {
   setTune: (id: string) => void;
   setTempo: (x: number) => void;
   setKey: (semitones: number) => void;
+  /** play or mute one of the imported file's backing tracks */
+  setBackingOn: (k: number, on: boolean) => void;
 }
 
 const KEPT = "chimera-sing";
@@ -104,6 +116,8 @@ function kept(): { lyrics: string; tune: string; tempo: number; key: number } {
 const KEPT_TAKE = "chimera-take";
 /** a take's length cap, in key downs and ups */
 const TAKE_MAX = 4000;
+/** the backing's cap, in notes over all its tracks */
+const BACKING_MAX = 30000;
 
 /** the last session's take, if it reads as one */
 function keptTake(): Take | null {
@@ -114,6 +128,12 @@ function keptTake(): Take | null {
     if (!events.some((e) => e.vel >= 0)) return null;
     const take: Take = { lyrics: k.lyrics, start: Math.max(0, Math.round(k.start)), events };
     if (typeof k.source === "string") take.source = k.source;
+    if (take.source && Array.isArray(k.backing)) {
+      const backing = k.backing.filter(
+        (b): b is BackingTrack => !!b && typeof b.name === "string" && Array.isArray(b.notes) && b.notes.length % 4 === 0 && b.notes.every((x) => typeof x === "number"),
+      );
+      if (backing.length) take.backing = backing.map((b) => ({ name: b.name, on: b.on !== false, notes: b.notes }));
+    }
     return take;
   } catch {
     return null;
@@ -156,6 +176,11 @@ export const useSing = create<SingState>((set, get) => ({
   setTune: (id) => set({ tune: id }),
   setTempo: (x) => set({ tempo: x }),
   setKey: (semitones) => set({ key: semitones }),
+  setBackingOn: (k, on) => {
+    const take = get().take;
+    if (!take?.backing?.[k]) return;
+    set({ take: { ...take, backing: take.backing.map((b, j) => (j === k ? { ...b, on } : b)) } });
+  },
 }));
 
 useSing.subscribe((s, p) => {
@@ -328,9 +353,15 @@ export function takeTimes(take: Take): number[] {
   return out;
 }
 
-/** Make a MIDI file's melody the take, sung to the Lyrics box one syllable a note. */
-export function importTake(source: string, notes: { t: number; dur: number; midi: number; vel: number }[]): void {
-  const first = notes[0]?.t ?? 0;
+type Note = { t: number; dur: number; midi: number; vel: number };
+
+/**
+ * Make a MIDI file's melody the take, sung to the Lyrics box one syllable a note, with the file's
+ * other tracks as its backing. Times keep their place against each other; the earliest note is 0.
+ */
+export function importTake(source: string, notes: Note[], backing: { name: string; notes: Note[] }[] = []): void {
+  let first = notes[0]?.t ?? 0;
+  for (const b of backing) for (const n of b.notes) first = Math.min(first, n.t);
   const events: TakeEvent[] = [];
   for (const n of notes) {
     const t0 = Math.round(n.t - first);
@@ -340,7 +371,25 @@ export function importTake(source: string, notes: { t: number; dur: number; midi
   stopDemo();
   taking = null;
   const st = useSing.getState();
-  useSing.setState({ take: { lyrics: st.lyrics, start: 0, events: events.slice(0, TAKE_MAX), source }, tune: TAKE_ID, cursor: 0 });
+  const take: Take = { lyrics: st.lyrics, start: 0, events: events.slice(0, TAKE_MAX), source };
+  let room = BACKING_MAX;
+  const tracks: BackingTrack[] = [];
+  for (const b of backing) {
+    const keep = b.notes.slice(0, room);
+    room -= keep.length;
+    if (keep.length) tracks.push({ name: b.name, on: true, notes: keep.flatMap((n) => [Math.round(n.t - first), Math.max(1, Math.round(n.dur)), n.midi, Math.max(1, Math.min(127, n.vel))]) });
+  }
+  if (tracks.length) take.backing = tracks;
+  useSing.setState({ take, tune: TAKE_ID, cursor: 0 });
+}
+
+/** The take's backing tracks that are on, merged into one list in time order (`track` indexes `take.backing`). */
+export function backingNotes(take: Take): BackingNote[] {
+  const out: BackingNote[] = [];
+  take.backing?.forEach((b, track) => {
+    for (let j = 0; j + 3 < b.notes.length; j += 4) out.push({ t: b.notes[j], dur: b.notes[j + 1], midi: b.notes[j + 2], vel: b.notes[j + 3], track });
+  });
+  return out.sort((a, b) => a.t - b.t);
 }
 
 /** One sung note of a take: its key-down and key-up events (off −1: none), when (ms) and what. */
@@ -353,6 +402,13 @@ export interface TakeBlock {
   text: string;
   /** index of its syllable in the take's lyrics */
   syl: number;
+}
+
+/** How many syllables from i on share one note: a word written with "+" sings them all on it. */
+export function joinedAt(syls: Syllable[], i: number): number {
+  let n = 1;
+  while (n < syls.length && syls[(i + n - 1) % syls.length].join) n++;
+  return n;
 }
 
 /** The take's notes as blocks on its playback clock, each with the syllable it sings. */
@@ -371,8 +427,10 @@ export function takeBlocks(take: Take): TakeBlock[] {
       open.delete(e.midi);
     }
     if (e.vel < 0) return;
-    const b: TakeBlock = { on: k, off: -1, t0: times[k], t1: times[k], midi: e.midi, text: syls[i].text, syl: i };
-    i = (i + 1) % syls.length;
+    const n = joinedAt(syls, i);
+    const text = Array.from({ length: n }, (_, m) => syls[(i + m) % syls.length].text).join("");
+    const b: TakeBlock = { on: k, off: -1, t0: times[k], t1: times[k], midi: e.midi, text, syl: i };
+    i = (i + n) % syls.length;
     open.set(e.midi, b);
     out.push(b);
   });
@@ -394,6 +452,31 @@ export function moveTakeNote(b: TakeBlock, midi: number): void {
   useSing.setState({ take: next });
 }
 
+/**
+ * Move a take's note in time: its key-down to `t0` and key-up to `t1` (ms on the playback clock).
+ * With `ripple`, every later event moves by as much as the key-down did. Notes keep singing their
+ * syllables in time order, so a note dragged past another swaps words with it.
+ */
+export function retimeTakeNote(b: TakeBlock, t0: number, t1: number, ripple = false): void {
+  const take = useSing.getState().take;
+  if (!take || !take.events[b.on]) return;
+  const times = takeTimes(take);
+  const start = Math.max(0, Math.round(t0));
+  const end = Math.max(start + 20, Math.round(t1));
+  const dt = start - times[b.on];
+  const moved = take.events.map((e, k) => {
+    let t = times[k];
+    if (k === b.on) t = start;
+    else if (k === b.off) t = end;
+    else if (ripple && k > b.on) t = Math.max(0, t + dt);
+    return { e: { ...e, t }, k };
+  });
+  moved.sort((p, q) => p.e.t - q.e.t || (p.e.vel < 0 ? -1 : 0) - (q.e.vel < 0 ? -1 : 0) || p.k - q.k);
+  const next = { ...take, events: moved.map((m) => m.e) };
+  if (taking?.take === take) taking.take = next;
+  useSing.setState({ take: next });
+}
+
 /** Sing one of the take's syllables briefly at `midi` (after a note is moved), unless a song is playing. */
 export function auditionTake(b: TakeBlock, midi: number, body: BodyMix): void {
   const st = useSing.getState();
@@ -409,7 +492,7 @@ export function auditionTake(b: TakeBlock, midi: number, body: BodyMix): void {
 /** where the take playing back is (ms on its playback clock), or null */
 export function takePlayhead(): number | null {
   const r = replay;
-  return r ? (performance.now() - r.startAt - TAKE_LEAD) * r.tempo : null;
+  return r ? (performance.now() - r.startAt - TAKE_LEAD) * r.tempo - r.lead : null;
 }
 
 export function singNoteOn(midi: number, velocity: number, body: BodyMix): void {
@@ -545,7 +628,7 @@ const TAKE_GAP = 2000;
 /** silence before a take's first note (ms) */
 const TAKE_LEAD = 150;
 
-let replay: { timer: ReturnType<typeof setTimeout> | null; hooks: TuneHooks; startAt: number; tempo: number } | null = null;
+let replay: { timer: ReturnType<typeof setTimeout> | null; hooks: TuneHooks; startAt: number; tempo: number; lead: number } | null = null;
 
 function releaseKeys(): void {
   if (sounding) {
@@ -580,27 +663,60 @@ async function playTake(body: BodyMix, ready?: () => Promise<void>, hooks: TuneH
   const times = takeTimes(take);
   let i = take.start % syls.length;
   hooks.onStart?.();
-  const run = { timer: null as ReturnType<typeof setTimeout> | null, hooks, startAt: performance.now(), tempo };
-  const due = (k: number) => Math.max(0, run.startAt + TAKE_LEAD + times[k] / tempo - performance.now());
+  const lead = take.source ? (events[0]?.t ?? 0) : 0;
+  const run = { timer: null as ReturnType<typeof setTimeout> | null, hooks, startAt: performance.now(), tempo, lead };
+  const due = (k: number) => Math.max(0, run.startAt + TAKE_LEAD + (lead + times[k]) / tempo - performance.now());
+  const offOf: number[] = events.map(() => -1);
+  const held = new Map<number, number>();
+  events.forEach((e, k) => {
+    const on = held.get(e.midi);
+    if (on !== undefined) {
+      offOf[on] = k;
+      held.delete(e.midi);
+    }
+    if (e.vel >= 0) held.set(e.midi, k);
+  });
+  const backing = backingNotes(take);
+  const backingEnd = backing.reduce((m, n) => Math.max(m, n.t + n.dur), 0);
+  const ends = () => run.startAt + TAKE_LEAD + backingEnd / tempo;
+  if (backing.length) startBacking(backing, run.startAt + TAKE_LEAD, tempo, shift, (k) => useSing.getState().take?.backing?.[k]?.on !== false);
   replay = run;
   useSing.setState({ playing: TAKE_ID, at: -1 });
   const step = (k: number) => {
     if (replay !== run) return;
     if (k >= events.length) {
       for (const m of [...keys]) noteOff(m, body, syls[i]);
-      run.timer = setTimeout(() => {
-        if (replay !== run) return;
-        replay = null;
-        useSing.setState({ playing: null, at: -1 });
-        hooks.onEnd?.();
-      }, 400);
+      run.timer = setTimeout(
+        () => {
+          if (replay !== run) return;
+          replay = null;
+          stopBacking();
+          useSing.setState({ playing: null, at: -1 });
+          hooks.onEnd?.();
+        },
+        Math.max(400, ends() + 300 - performance.now()),
+      );
       return;
     }
     const e = events[k];
     if (e.vel >= 0) {
       const at = i;
+      const n = joinedAt(syls, i);
       i = noteOn(e.midi + shift, e.vel, body, syls, i);
       if (same) useSing.setState({ at });
+      const span = offOf[k] >= 0 ? (times[offOf[k]] - times[k]) / tempo : 0;
+      for (let m = 1; m < n && span > 0; m++) {
+        setTimeout(
+          () => {
+            if (replay !== run || !keys.includes(e.midi + shift)) return;
+            noteOff(e.midi + shift, body, syls[i]);
+            const at = i;
+            i = noteOn(e.midi + shift, e.vel, body, syls, i);
+            if (same) useSing.setState({ at });
+          },
+          (span * m) / n,
+        );
+      }
     } else noteOff(e.midi + shift, body, syls[i]);
     run.timer = setTimeout(() => step(k + 1), k + 1 < events.length ? due(k + 1) : 0);
   };
@@ -610,6 +726,7 @@ async function playTake(body: BodyMix, ready?: () => Promise<void>, hooks: TuneH
 
 function stopDemo(): void {
   demoToken++;
+  stopBacking();
   const r = replay;
   if (r) {
     replay = null;

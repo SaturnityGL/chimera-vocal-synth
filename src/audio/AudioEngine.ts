@@ -50,6 +50,20 @@ export class AudioEngine {
   }
 
   private tap: MediaStreamAudioDestinationNode | null = null;
+  private backingBus: GainNode | null = null;
+
+  /** Where an accompaniment plays: to the speakers and any clip at the voice's volume, not on its meters; null before start(). */
+  backingOut(): AudioNode | null {
+    if (!this.ctx || !this.master) return null;
+    if (!this.backingBus) {
+      const bus = this.ctx.createGain();
+      bus.gain.value = this.master.gain.value;
+      bus.connect(this.ctx.destination);
+      if (this.tap) bus.connect(this.tap);
+      this.backingBus = bus;
+    }
+    return this.backingBus;
+  }
 
   /** What the speakers play, as a media stream (to record a clip); null before start(). */
   recordStream(): MediaStream | null {
@@ -57,6 +71,7 @@ export class AudioEngine {
     if (!this.tap) {
       this.tap = this.ctx.createMediaStreamDestination();
       this.master.connect(this.tap);
+      this.backingBus?.connect(this.tap);
     }
     return this.tap.stream;
   }
@@ -232,6 +247,7 @@ export class AudioEngine {
 
   setVolume(v: number): void {
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+    if (this.backingBus && this.ctx) this.backingBus.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
   }
 
   setBody(body: BodyMix): void {

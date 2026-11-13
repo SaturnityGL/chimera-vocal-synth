@@ -88,3 +88,10 @@ test("inRange folds by octaves", () => {
   expect(inRange(110)).toBe(98 - 12);
   expect(inRange(60)).toBe(60);
 });
+
+test("pickVocal takes a track named like a voice, else the busiest", async () => {
+  const { pickVocal } = await import("../src/ui/midifile.ts");
+  const n = (k: number) => Array.from({ length: k }, (_, i) => ({ t: i * 100, dur: 90, midi: 60, vel: 90 }));
+  expect(pickVocal([{ name: "Strings", notes: n(9) }, { name: "Lead Vox", notes: n(3) }] as never)).toBe(1);
+  expect(pickVocal([{ name: "Strings", notes: n(2) }, { name: "Piano", notes: n(5) }] as never)).toBe(1);
+});
