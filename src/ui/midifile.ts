@@ -31,6 +31,8 @@ interface RawTrack {
 }
 
 const DRUMS = 9;
+const CHORD = 30;
+const OVERLAP = 40;
 const FAMILIES = ["Piano", "Chromatic percussion", "Organ", "Guitar", "Bass", "Strings", "Ensemble", "Brass", "Reed", "Pipe", "Synth lead", "Synth pad", "Synth effects", "Ethnic", "Percussive", "Sound effects"];
 
 /**
@@ -161,18 +163,30 @@ function clock(division: number, tempos: { tick: number; usPerQ: number }[]): (t
 }
 
 /** A track's notes as one sung line: the top note of each chord, each cut off where the next begins. */
-export function melodyLine(notes: MidiNote[]): MidiNote[] {
-  const byStart = new Map<number, MidiNote>();
-  for (const n of notes) {
-    const top = byStart.get(n.t);
-    if (!top || n.midi > top.midi) byStart.set(n.t, n);
+export function melodyLine(notes: MidiNote[], fill = 0): MidiNote[] {
+  const sorted = [...notes].sort((a, b) => a.t - b.t || b.midi - a.midi);
+  const line: MidiNote[] = [];
+  for (const n of sorted) {
+    const cur = line[line.length - 1];
+    if (cur && n.t - cur.t < CHORD) {
+      if (n.midi > cur.midi) line[line.length - 1] = n;
+      continue;
+    }
+    if (cur && n.midi < cur.midi && n.t < cur.t + cur.dur - CHORD * 3) continue;
+    line.push(n);
   }
-  const line = [...byStart.values()].sort((a, b) => a.t - b.t);
   return line.map((n, k) => {
     const next = line[k + 1];
-    const dur = next ? Math.min(n.dur, next.t - n.t) : n.dur;
+    let dur = next ? Math.min(n.dur, next.t - n.t) : n.dur;
+    if (next && fill > 0 && next.t - (n.t + n.dur) < fill) dur = next.midi === n.midi ? next.t - n.t - CHORD : next.t - n.t + OVERLAP;
     return { ...n, dur: Math.max(1, dur) };
   });
+}
+
+/** The notes of `notes` that `line` (its melodyLine) leaves out: what a one-track piano plays under the tune. */
+export function underLine(notes: MidiNote[], line: MidiNote[]): MidiNote[] {
+  const sung = new Set(line.map((n) => `${n.t}:${n.midi}`));
+  return notes.filter((n) => !sung.has(`${n.t}:${n.midi}`));
 }
 
 /** The track most likely to be the sung one: named like a voice or melody, else the one with the most notes. */

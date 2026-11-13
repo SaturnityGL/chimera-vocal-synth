@@ -3,7 +3,7 @@
  * and note-on velocity 0 end notes, drums are dropped, and a chord sings its top note.
  */
 import { describe, expect, test } from "bun:test";
-import { parseMidi, melodyLine, inRange } from "../src/ui/midifile.ts";
+import { parseMidi, melodyLine, underLine, inRange } from "../src/ui/midifile.ts";
 
 function vlq(n: number): number[] {
   const out = [n & 0x7f];
@@ -80,6 +80,32 @@ describe("melodyLine", () => {
       { t: 500, dur: 300, midi: 62, vel: 90 },
     ]);
     expect(line.map((x) => x.dur)).toEqual([500, 300]);
+  });
+
+  test("a lower note under a held tune note is left to the piano", () => {
+    const notes = [
+      { t: 0, dur: 1000, midi: 72, vel: 90 },
+      { t: 10, dur: 400, midi: 48, vel: 70 },
+      { t: 500, dur: 400, midi: 55, vel: 70 },
+      { t: 1000, dur: 500, midi: 71, vel: 90 },
+      { t: 1500, dur: 500, midi: 60, vel: 90 },
+    ];
+    const line = melodyLine(notes);
+    expect(line.map((x) => x.midi)).toEqual([72, 71, 60]);
+    expect(underLine(notes, line).map((x) => x.midi)).toEqual([48, 55]);
+  });
+
+  test("legato holds each note into the next, short of a long rest", () => {
+    const line = melodyLine(
+      [
+        { t: 0, dur: 200, midi: 60, vel: 90 },
+        { t: 500, dur: 200, midi: 62, vel: 90 },
+        { t: 1000, dur: 200, midi: 62, vel: 90 },
+        { t: 5000, dur: 200, midi: 64, vel: 90 },
+      ],
+      1200,
+    );
+    expect(line.map((x) => x.dur)).toEqual([540, 470, 200, 200]);
   });
 });
 

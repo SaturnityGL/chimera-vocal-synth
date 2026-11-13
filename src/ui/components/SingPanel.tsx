@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.ts";
 import { useSing, playTune, stopSinging, soundingSyllable, sungNow, TUNES, TAKE_ID, ensureDictionary, importTake } from "../singing.ts";
-import { parseMidi, melodyLine, inRange, pickVocal, type MidiTrack } from "../midifile.ts";
+import { parseMidi, melodyLine, underLine, inRange, pickVocal, type MidiTrack } from "../midifile.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { canRecord, Clip } from "../../song/record.ts";
 import { mouthWords } from "../mouthWords.ts";
@@ -257,6 +257,8 @@ function SingActions() {
 
 /** the tracks worth singing, most notes first */
 const trackName = (t: MidiTrack, k: number) => t.name || `Track ${k + 1}`;
+const LEGATO = "chimera-midi-legato";
+const LEGATO_GAP = 1200;
 
 /**
  * Import MIDI: a local .mid file's melody becomes the take (nothing leaves the browser). Its notes
@@ -268,11 +270,30 @@ function MidiImport() {
   const file = useRef<HTMLInputElement>(null);
   const [loaded, setLoaded] = useState<{ name: string; tracks: MidiTrack[]; pick: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const use = (name: string, tracks: MidiTrack[], pick: number) => {
+  const [legato, setLegato] = useState(() => {
+    try {
+      return localStorage.getItem(LEGATO) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const use = (name: string, tracks: MidiTrack[], pick: number, smooth = legato) => {
     setLoaded({ name, tracks, pick });
-    const line = melodyLine(tracks[pick].notes).map((n) => ({ ...n, midi: inRange(n.midi) }));
-    const backing = tracks.flatMap((t, k) => (k === pick ? [] : [{ name: trackName(t, k), notes: t.notes }]));
-    importTake(name, line, backing);
+    const sung = tracks[pick];
+    const line = melodyLine(sung.notes, smooth ? LEGATO_GAP : 0);
+    const under = underLine(sung.notes, line);
+    const backing = tracks.flatMap((t, k) => (k === pick ? (under.length ? [{ name: `${trackName(t, k)} (under the tune)`, notes: under }] : []) : [{ name: trackName(t, k), notes: t.notes }]));
+    importTake(name, line.map((n) => ({ ...n, midi: inRange(n.midi) })), backing);
+  };
+  const toggleLegato = () => {
+    const on = !legato;
+    setLegato(on);
+    try {
+      localStorage.setItem(LEGATO, on ? "1" : "0");
+    } catch {
+      // not kept: this session still uses it
+    }
+    if (loaded && source === loaded.name) use(loaded.name, loaded.tracks, loaded.pick, on);
   };
   const open = async (f: File | undefined) => {
     if (!f) return;
@@ -309,6 +330,11 @@ function MidiImport() {
           options={loaded.tracks.map((t, k) => ({ value: String(k), label: `Sing: ${trackName(t, k)} (${t.notes.length})` }))}
           onChange={(v) => use(loaded.name, loaded.tracks, Number(v))}
         />
+      )}
+      {loaded && source === loaded.name && (
+        <Chip on={legato} onClick={toggleLegato} title="Legato: each note holds until the next one starts, gliding into it, so short piano notes sing as one line (rests over a second stay rests). Switching it re-imports the file, so pitch and timing edits go.">
+          Legato
+        </Chip>
       )}
       <BackingTracks />
       {error && <span className="midi-error">{error}</span>}

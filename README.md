@@ -10,6 +10,7 @@
 > - **Import MIDI** in the Sing tab: pick a local `.mid` file and its melody becomes the take, timing and all, singing whatever is in the Lyrics box one syllable per note. Chords sing their top note, drums are skipped, and a file with several tracks or channels gets a track picker (a one-track file is split by channel, each layer named by its instrument). The file never leaves your browser.
 > - **Backing tracks** for imported MIDI: pick which track is the voice in **Sung track**, and the file's other tracks play underneath on a simple piano, following Tempo, Key and Volume. **Backing** turns tracks on or off, even mid-song.
 > - **One note per word**: end a word with `+` in the lyrics (`fire+`) and it sings the whole word on a single note instead of a syllable per note. Handy when a MIDI gives one note to a word the voice would split.
+> - **Legato** for imported MIDI (on by default): piano parts play short, detached notes, so each sung note now holds until the next one starts and glides into it instead of stopping (rests over about a second stay rests). For a piano track that carries both hands, the tune is the top line and the notes under it move to a backing track called "(under the tune)".
 
 A physical-modeling voice synthesizer in the browser. Every sound comes from a simulated
 airway (lungs, vocal folds or syrinx, a branched vocal tract, lips, nose), not from samples.
