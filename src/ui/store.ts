@@ -75,6 +75,8 @@ interface State {
   previewBody: (b: BodyMix) => void;
   setSource: (v: Partial<VoiceSource>) => void;
   setArtic: (v: Partial<HumanArtic>, tipFree?: boolean) => void;
+  /** the tongue, lips and jaw back where they start */
+  resetArtic: () => void;
   setVolume: (v: number) => void;
   setHold: (h: boolean) => void;
   /** Breathe: on (starting the audio first, if need be) or off */
@@ -123,6 +125,11 @@ let session = 0;
  * why. Beatbox closes the jaw and lips to its ready pose, and the pose stayed after leaving.
  */
 let whisperInPlay = false;
+
+function restPose(): HumanArtic {
+  const tip = restTip(NEUTRAL.jaw, NEUTRAL.tbX, NEUTRAL.tbY);
+  return { ...NEUTRAL, ttX: tip.x, ttY: tip.y };
+}
 let poseBeforeBeat: { artic: HumanArtic; tipFree: boolean } | null = null;
 
 const FIRST_BEAT = BEAT_PRESETS[0];
@@ -133,10 +140,7 @@ export const useStore = create<State>((set, get) => ({
   startError: null,
   body: PRESETS.male,
   source: { ...DEFAULT_SOURCE },
-  artic: (() => {
-    const tip = restTip(NEUTRAL.jaw, NEUTRAL.tbX, NEUTRAL.tbY);
-    return { ...NEUTRAL, ttX: tip.x, ttY: tip.y };
-  })(),
+  artic: restPose(),
   tipFree: true,
   volume: 0.8,
   hold: false,
@@ -305,6 +309,7 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({ artic: { ...s.artic, ...v }, tipFree: tipFree ?? s.tipFree }));
     engine.setArtic(v, tipFree);
   },
+  resetArtic: () => get().setArtic(restPose(), true),
   setVolume: (v) => {
     set({ volume: v });
     engine.setVolume(v);

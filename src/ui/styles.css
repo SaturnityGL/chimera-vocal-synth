@@ -1212,8 +1212,8 @@ button.primary.large {
 
 .right-play {
   grid-template-columns: minmax(0, 284fr) minmax(0, 58fr) minmax(0, 342fr);
-  grid-template-rows: auto minmax(min-content, 200fr) minmax(min-content, 200fr) auto minmax(min-content, 172fr);
-  grid-template-areas: "act act act" "tube tube folds" "spec spec spec" "vowels voice voice" "keys keys keys";
+  grid-template-rows: auto minmax(min-content, 200fr) minmax(min-content, 200fr) auto;
+  grid-template-areas: "act act act" "tube tube folds" "spec spec spec" "vowels voice voice";
 }
 
 .s-tube { grid-area: tube; }
@@ -1222,6 +1222,36 @@ button.primary.large {
 .s-vowels { grid-area: vowels; }
 .s-voice { grid-area: voice; }
 .s-keys { grid-area: keys; }
+
+/* the keys run the width of the wall under both columns, four octaves wide (not in Speak) */
+.wall-play,
+.wall-sing,
+.wall-beatbox,
+.wall-bestiary {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.wall > .wide-keys {
+  grid-area: auto;
+  grid-column: 1 / -1;
+}
+
+.wall > .wide-keys .screen-body {
+  min-height: 120px;
+}
+
+.wall-beatbox > .wide-keys .screen-body {
+  min-height: 60px;
+}
+
+@media (max-width: 1100px) {
+  .wall-play,
+  .wall-sing,
+  .wall-beatbox,
+  .wall-bestiary {
+    grid-template-rows: none;
+  }
+}
 
 /* ---------- the action bar: each tab's one bright button, in the same place at the top of the
    right column, with the few settings that belong beside it */
@@ -1809,7 +1839,7 @@ input[type="range"]::-moz-range-thumb {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: none;
     grid-auto-rows: auto;
-    grid-template-areas: "act act" "tube folds" "spec spec" "vowels vowels" "voice voice" "keys keys";
+    grid-template-areas: "act act" "tube folds" "spec spec" "vowels vowels" "voice voice";
   }
   .right-play .screen-body {
     min-height: 190px;
@@ -1831,7 +1861,7 @@ input[type="range"]::-moz-range-thumb {
   }
   .right-play {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "act" "tube" "folds" "spec" "vowels" "voice" "keys";
+    grid-template-areas: "act" "tube" "folds" "spec" "vowels" "voice";
   }
   .left .screen-body {
     min-height: 118vw;
@@ -2066,19 +2096,6 @@ input[type="range"]::-moz-range-thumb {
   grid-template-areas: "act act" "lyrics lyrics" "roll roll" "spec voice";
 }
 
-/* Sing's keys run the width of the wall under both columns, four octaves wide */
-.wall-sing {
-  grid-template-rows: minmax(0, 1fr) auto;
-}
-
-.wall-sing > .sing-keys {
-  grid-area: auto;
-  grid-column: 1 / -1;
-}
-
-.wall-sing > .sing-keys .screen-body {
-  min-height: 120px;
-}
 
 .s-roll { grid-area: roll; }
 .s-lyrics { grid-area: lyrics; }
@@ -2185,9 +2202,6 @@ input[type="range"]::-moz-range-thumb {
     grid-template-rows: none;
     grid-template-areas: "act act" "lyrics lyrics" "roll roll" "spec voice";
   }
-  .wall-sing {
-    grid-template-rows: none;
-  }
   .right-sing .screen-body {
     min-height: 190px;
   }
@@ -2213,8 +2227,8 @@ input[type="range"]::-moz-range-thumb {
 /* ---------- Beatbox */
 .right-beatbox {
   grid-template-columns: minmax(0, 392fr) minmax(0, 292fr);
-  grid-template-rows: auto minmax(min-content, 236fr) minmax(min-content, 176fr) auto auto;
-  grid-template-areas: "act act" "seq seq" "wf wf" "pads transport" "keys keys";
+  grid-template-rows: auto minmax(min-content, 236fr) minmax(min-content, 176fr) auto;
+  grid-template-areas: "act act" "seq seq" "wf wf" "pads transport";
 }
 
 .s-seq { grid-area: seq; }
@@ -2486,7 +2500,7 @@ input[type="range"]::-moz-range-thumb {
   .right-beatbox {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: none;
-    grid-template-areas: "act act" "seq seq" "wf wf" "pads transport" "keys keys";
+    grid-template-areas: "act act" "seq seq" "wf wf" "pads transport";
   }
   .right-beatbox .screen-body {
     min-height: 200px;
@@ -2506,7 +2520,7 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 640px) {
   .right-beatbox {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "act" "seq" "wf" "pads" "transport" "keys";
+    grid-template-areas: "act" "seq" "wf" "pads" "transport";
   }
   .beat-overlay {
     top: 10px;
@@ -2518,8 +2532,8 @@ input[type="range"]::-moz-range-thumb {
    the column the height it was */
 .right-bestiary {
   grid-template-columns: minmax(0, 342fr) minmax(0, 342fr);
-  grid-template-rows: auto minmax(min-content, 196fr) minmax(min-content, 196fr) auto auto;
-  grid-template-areas: "act act" "gallery gallery" "wf airway" "cparams cparams" "keys keys";
+  grid-template-rows: auto minmax(min-content, 196fr) minmax(min-content, 196fr) auto;
+  grid-template-areas: "act act" "gallery gallery" "wf airway" "cparams cparams";
 }
 
 .s-gallery { grid-area: gallery; }
@@ -2611,7 +2625,7 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 1100px) {
   .right-bestiary {
     grid-template-rows: none;
-    grid-template-areas: "act act" "gallery gallery" "wf wf" "cparams cparams" "airway airway" "keys keys";
+    grid-template-areas: "act act" "gallery gallery" "wf wf" "cparams cparams" "airway airway";
   }
   .right-bestiary .screen-body {
     min-height: 190px;
@@ -2627,7 +2641,7 @@ input[type="range"]::-moz-range-thumb {
 @media (max-width: 640px) {
   .right-bestiary {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "act" "gallery" "wf" "cparams" "airway" "keys";
+    grid-template-areas: "act" "gallery" "wf" "cparams" "airway";
   }
   .s-gallery .specimens {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -12,9 +12,9 @@ import { ActionBar, PrimaryButton } from "./components/ActionBar.tsx";
 import { Segmented, Toggle } from "./components/Controls.tsx";
 import { Chip, Screen } from "./components/Screen.tsx";
 import { SpeakRight, speechInfo, speechSlots, speechWords } from "./components/SpeakPanel.tsx";
-import { BestiaryRight } from "./components/BestiaryPanel.tsx";
+import { BestiaryKeys, BestiaryRight } from "./components/BestiaryPanel.tsx";
 import { CreatureView } from "./components/CreatureView.tsx";
-import { BeatboxRight, BeatOverlay, beatInfo, beatSlots } from "./components/BeatboxPanel.tsx";
+import { BeatboxKeys, BeatboxRight, BeatOverlay, beatInfo, beatSlots } from "./components/BeatboxPanel.tsx";
 import { SingKeys, SingRight, singInfo, singWords } from "./components/SingPanel.tsx";
 import type { Mode } from "./store.ts";
 import type { BodyName } from "../worklet/protocol.ts";
@@ -88,8 +88,14 @@ function ViewToggles() {
   const view = useStore((s) => s.view);
   const setView = useStore((s) => s.setView);
   const bestiary = useStore((s) => s.mode === "bestiary");
+  const resetArtic = useStore((s) => s.resetArtic);
   return (
     <div className="view-toggles">
+      {!bestiary && (
+        <Chip toggle={false} onClick={resetArtic} title="Put the tongue, lips and jaw back where they start">
+          Reset
+        </Chip>
+      )}
       {!bestiary && <Toggle label="3D" checked={view.threeD} onChange={(v) => setView({ threeD: v })} />}
       <Toggle label="Sound pressure" checked={view.pressure} onChange={(v) => setView({ pressure: v })} />
       {!bestiary && <Toggle label="Airflow" checked={view.particles} onChange={(v) => setView({ particles: v })} />}
@@ -153,7 +159,6 @@ function PlayActions() {
 }
 
 function PlayRight() {
-  const f0 = useStore((s) => s.source.f0);
   return (
     <div className="right right-play">
       <PlayActions />
@@ -172,10 +177,16 @@ function PlayRight() {
       <Screen className="s-voice" title="Voice">
         <VoiceControls />
       </Screen>
-      <Screen className="s-keys" title="Keys" sub={`${Math.round(f0)} Hz`} tools={<MidiButton />}>
-        <Keys />
-      </Screen>
     </div>
+  );
+}
+
+function PlayKeys() {
+  const f0 = useStore((s) => s.source.f0);
+  return (
+    <Screen className="s-keys wide-keys" title="Keys" sub={`${Math.round(f0)} Hz`} tools={<MidiButton />}>
+      <Keys octaves={4} below={1} />
+    </Screen>
   );
 }
 
@@ -198,7 +209,7 @@ function Wall() {
       <main className={`wall wall-${mode}`}>
         <LeftScreen />
         {mode === "play" ? <PlayRight /> : mode === "speak" ? <SpeakRight /> : mode === "sing" ? <SingRight /> : mode === "beatbox" ? <BeatboxRight /> : <BestiaryRight />}
-        {mode === "sing" && <SingKeys />}
+        {mode === "play" ? <PlayKeys /> : mode === "sing" ? <SingKeys /> : mode === "beatbox" ? <BeatboxKeys /> : mode === "bestiary" ? <BestiaryKeys /> : null}
       </main>
     </div>
   );

@@ -138,9 +138,15 @@ export function BestiaryRight() {
       <Screen className="s-airway" title="Airway" sub="Each tube unrolled">
         <CreatureTubes />
       </Screen>
-      <Screen className="s-keys s-keys-compact" title="Keys" tools={<>{def && <KeysMode def={def} />}<MidiButton /></>}>
-        <Keys />
-      </Screen>
     </div>
+  );
+}
+
+export function BestiaryKeys() {
+  const def = creatureById(useStore((s) => s.creature));
+  return (
+    <Screen className="s-keys wide-keys" title="Keys" tools={<>{def && <KeysMode def={def} />}<MidiButton /></>}>
+      <Keys octaves={4} below={1} />
+    </Screen>
   );
 }

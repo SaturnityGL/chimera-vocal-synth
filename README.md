@@ -5,7 +5,8 @@
 > **Added in this fork:**
 > - **Always-on take recording** in the Sing tab: every note you play on the keys or MIDI is recorded with your timing, and Sing plays it back as "Your take" (Tempo and Key apply). The take survives reloads; Clear starts over.
 > - **Pitch editor** for your take: turn on **Edit** in the Pitch screen to see the take as note blocks on a timeline. Drag a block up or down to change its pitch (it sings the new note), scroll through time, Shift+scroll for pitch, Ctrl+scroll to zoom, drag the background to pan. A playhead follows the take while Sing plays it.
-> - **Wider keyboard** in the Sing tab: the keys run the full width of the window under both panels, four octaves instead of two.
+> - **Wider keyboard** in Play, Sing, Beatbox and Bestiary: the keys run the full width of the window under both panels, four octaves instead of two.
+> - **Reset** button above the head: puts the tongue, lips and jaw back where they start after you've dragged them around.
 > - **Import MIDI** in the Sing tab: pick a local `.mid` file and its melody becomes the take, timing and all, singing whatever is in the Lyrics box one syllable per note. Chords sing their top note, drums are skipped, and a file with several tracks gets a track picker. The file never leaves your browser.
 
 A physical-modeling voice synthesizer in the browser. Every sound comes from a simulated

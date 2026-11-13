@@ -227,11 +227,16 @@ export function BeatboxRight() {
       <Screen className="s-transport" title="Tempo">
         <Transport />
       </Screen>
-      {/* the keys hum a bass note under the beat */}
-      <Screen className="s-keys s-keys-compact" title="Bass" tools={<MidiButton />}>
-        <Keys />
-      </Screen>
     </div>
+  );
+}
+
+/** the keys hum a bass note under the beat */
+export function BeatboxKeys() {
+  return (
+    <Screen className="s-keys wide-keys" title="Bass" tools={<MidiButton />}>
+      <Keys octaves={4} below={1} />
+    </Screen>
   );
 }
 

@@ -371,7 +371,7 @@ export function SingRight() {
 export function SingKeys() {
   const next = useSing((s) => (s.playing ? null : (s.syllables[s.cursor]?.text ?? null)));
   return (
-    <Screen className="s-keys sing-keys" title="Keys" sub={next ? `Next: ${next}` : ""} tools={<MidiButton />}>
+    <Screen className="s-keys wide-keys" title="Keys" sub={next ? `Next: ${next}` : ""} tools={<MidiButton />}>
       <Keys octaves={4} below={1} />
     </Screen>
   );
