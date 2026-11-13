@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.ts";
 import { useSing, playTune, stopSinging, soundingSyllable, sungNow, TUNES, TAKE_ID, ensureDictionary, importTake } from "../singing.ts";
-import { parseMidi, melodyLine, underLine, inRange, pickVocal, type MidiTrack } from "../midifile.ts";
+import { parseMidi, midiBeat, melodyLine, underLine, inRange, pickVocal, type MidiTrack } from "../midifile.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { canRecord, Clip } from "../../song/record.ts";
 import { mouthWords } from "../mouthWords.ts";
@@ -10,7 +10,7 @@ import { Keys, MidiButton } from "./Keys.tsx";
 import { ActionBar, PrimaryButton } from "./ActionBar.tsx";
 import { Menu } from "./Controls.tsx";
 import { PianoRoll } from "./PianoRoll.tsx";
-import { TakeEditor } from "./TakeEditor.tsx";
+import { TakeEditor, GridTools } from "./TakeEditor.tsx";
 import { SpectrumView } from "./SpectrumView.tsx";
 import { Chip, Screen } from "./Screen.tsx";
 import { EncoderPages } from "./Encoder.tsx";
@@ -268,7 +268,7 @@ const LEGATO_GAP = 1200;
 function MidiImport() {
   const source = useSing((s) => s.take?.source ?? null);
   const file = useRef<HTMLInputElement>(null);
-  const [loaded, setLoaded] = useState<{ name: string; tracks: MidiTrack[]; pick: number } | null>(null);
+  const [loaded, setLoaded] = useState<{ name: string; tracks: MidiTrack[]; pick: number; beat: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [legato, setLegato] = useState(() => {
     try {
@@ -277,13 +277,13 @@ function MidiImport() {
       return true;
     }
   });
-  const use = (name: string, tracks: MidiTrack[], pick: number, smooth = legato) => {
-    setLoaded({ name, tracks, pick });
+  const use = (name: string, tracks: MidiTrack[], pick: number, beat: number, smooth = legato) => {
+    setLoaded({ name, tracks, pick, beat });
     const sung = tracks[pick];
     const line = melodyLine(sung.notes, smooth ? LEGATO_GAP : 0);
     const under = underLine(sung.notes, line);
     const backing = tracks.flatMap((t, k) => (k === pick ? (under.length ? [{ name: `${trackName(t, k)} (under the tune)`, notes: under }] : []) : [{ name: trackName(t, k), notes: t.notes }]));
-    importTake(name, line.map((n) => ({ ...n, midi: inRange(n.midi) })), backing);
+    importTake(name, line.map((n) => ({ ...n, midi: inRange(n.midi) })), backing, beat);
   };
   const toggleLegato = () => {
     const on = !legato;
@@ -293,15 +293,16 @@ function MidiImport() {
     } catch {
       // not kept: this session still uses it
     }
-    if (loaded && source === loaded.name) use(loaded.name, loaded.tracks, loaded.pick, on);
+    if (loaded && source === loaded.name) use(loaded.name, loaded.tracks, loaded.pick, loaded.beat, on);
   };
   const open = async (f: File | undefined) => {
     if (!f) return;
     setError(null);
     try {
-      const tracks = parseMidi(await f.arrayBuffer());
+      const buf = await f.arrayBuffer();
+      const tracks = parseMidi(buf);
       if (!tracks.length) throw new Error("no notes");
-      use(f.name.replace(/\.midi?$/i, ""), tracks, pickVocal(tracks));
+      use(f.name.replace(/\.midi?$/i, ""), tracks, pickVocal(tracks), midiBeat(buf));
     } catch {
       setLoaded(null);
       setError("Couldn't read any notes from that file");
@@ -328,7 +329,7 @@ function MidiImport() {
           label="Sung track"
           value={String(loaded.pick)}
           options={loaded.tracks.map((t, k) => ({ value: String(k), label: `Sing: ${trackName(t, k)} (${t.notes.length})` }))}
-          onChange={(v) => use(loaded.name, loaded.tracks, Number(v))}
+          onChange={(v) => use(loaded.name, loaded.tracks, Number(v), loaded.beat)}
         />
       )}
       {loaded && source === loaded.name && (
@@ -394,6 +395,7 @@ export function SingRight() {
   useEffect(ensureDictionary, []);
   const ring = useStore((s) => s.artic.epilarynx >= RING - 0.05);
   const hasTake = useSing((s) => !!s.take);
+  const [drawing, setDrawing] = useState(false);
   const [edit, setEdit] = useState(() => {
     try {
       return localStorage.getItem(ROLL_VIEW) === "edit";
@@ -409,20 +411,31 @@ export function SingRight() {
       // not kept: the view still switches
     }
   };
-  const editing = edit && hasTake;
+  const editing = edit && (hasTake || drawing);
   return (
     <div className="right right-sing">
       <SingActions />
       <Screen
         className="s-roll"
         title="Pitch"
-        sub={editing ? "Drag notes to move them, their ends to resize" : ""}
+        sub={editing ? "Drag on the grid to draw, right-click to delete" : ""}
         tools={
-          hasTake && (
-            <Chip on={edit} onClick={toggleEdit} title="Edit your take: drag a note up or down to change its pitch and sideways to move it in time, drag its right end to change its length, hold Ctrl to move everything after it too; scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom">
+          <>
+            {editing && <GridTools />}
+            <Chip
+              on={editing}
+              onClick={() => {
+                if (hasTake) toggleEdit();
+                else {
+                  setDrawing(!editing);
+                  if (edit === editing) toggleEdit();
+                }
+              }}
+              title="Edit the take as a piano roll: drag on empty grid to draw a note, right-click a note to delete it, drag a note to move it, drag its right end to change its length, hold Ctrl to move everything after it too, hold Alt to move off the grid; middle-drag or Shift+drag to pan, scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom"
+            >
               Edit
             </Chip>
-          )
+          </>
         }
       >
         {editing ? <TakeEditor /> : <PianoRoll />}

@@ -41,22 +41,7 @@ const FAMILIES = ["Piano", "Chromatic percussion", "Organ", "Guitar", "Bass", "S
  * name of its own is named after its instrument family.
  */
 export function parseMidi(buf: ArrayBuffer): MidiTrack[] {
-  const d = new DataView(buf);
-  const tag = (at: number) => String.fromCharCode(d.getUint8(at), d.getUint8(at + 1), d.getUint8(at + 2), d.getUint8(at + 3));
-  if (d.byteLength < 14 || tag(0) !== "MThd") throw new Error("Not a MIDI file");
-  const headLen = d.getUint32(4);
-  const count = d.getUint16(10);
-  const division = d.getUint16(12);
-  const tempos: { tick: number; usPerQ: number }[] = [];
-  const raw: RawTrack[] = [];
-  let at = 8 + headLen;
-  for (let n = 0; n < count && at + 8 <= d.byteLength; n++) {
-    const len = d.getUint32(at + 4);
-    const start = at + 8;
-    const end = Math.min(d.byteLength, start + len);
-    if (tag(at) === "MTrk") raw.push(readTrack(d, start, end, tempos));
-    at = start + len;
-  }
+  const { raw, division, tempos } = readFile(buf);
   const ms = clock(division, tempos);
   return raw.flatMap((r) => {
     const byChannel = new Map<number, MidiNote[]>();
@@ -76,6 +61,34 @@ export function parseMidi(buf: ArrayBuffer): MidiTrack[] {
         return { name, channel, notes };
       });
   });
+}
+
+/** The file's opening beat (a quarter note), in ms: its first tempo, or 120 a minute when it sets none. */
+export function midiBeat(buf: ArrayBuffer): number {
+  const { division, tempos } = readFile(buf);
+  if (division & 0x8000) return 500;
+  const first = tempos.slice().sort((a, b) => a.tick - b.tick)[0];
+  return first ? first.usPerQ / 1000 : 500;
+}
+
+function readFile(buf: ArrayBuffer): { raw: RawTrack[]; division: number; tempos: { tick: number; usPerQ: number }[] } {
+  const d = new DataView(buf);
+  const tag = (at: number) => String.fromCharCode(d.getUint8(at), d.getUint8(at + 1), d.getUint8(at + 2), d.getUint8(at + 3));
+  if (d.byteLength < 14 || tag(0) !== "MThd") throw new Error("Not a MIDI file");
+  const headLen = d.getUint32(4);
+  const count = d.getUint16(10);
+  const division = d.getUint16(12);
+  const tempos: { tick: number; usPerQ: number }[] = [];
+  const raw: RawTrack[] = [];
+  let at = 8 + headLen;
+  for (let n = 0; n < count && at + 8 <= d.byteLength; n++) {
+    const len = d.getUint32(at + 4);
+    const start = at + 8;
+    const end = Math.min(d.byteLength, start + len);
+    if (tag(at) === "MTrk") raw.push(readTrack(d, start, end, tempos));
+    at = start + len;
+  }
+  return { raw, division, tempos };
 }
 
 function readTrack(d: DataView, start: number, end: number, tempos: { tick: number; usPerQ: number }[]): RawTrack {

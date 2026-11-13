@@ -1,7 +1,26 @@
-import { useEffect, useRef, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { usePhosphor } from "../usePhosphor.ts";
 import { useStore } from "../store.ts";
-import { useSing, takeBlocks, moveTakeNote, retimeTakeNote, auditionTake, takePlayhead, backingNotes, type Take, type TakeBlock } from "../singing.ts";
+import {
+  useSing,
+  takeBlocks,
+  moveTakeNote,
+  retimeTakeNote,
+  auditionTake,
+  takePlayhead,
+  backingNotes,
+  addTakeNote,
+  removeTakeNote,
+  setTakeBpm,
+  takeGrid,
+  snap,
+  GRIDS,
+  DEFAULT_BPM,
+  DRAWN,
+  type Take,
+  type TakeBlock,
+} from "../singing.ts";
+import { Menu } from "./Controls.tsx";
 import { TEXT, V } from "../colors.ts";
 import { beam, label, seg } from "../render/vector.ts";
 
@@ -16,13 +35,17 @@ const ZOOM_MAX = 0.6;
 const EDGE = 6;
 
 type NoteDrag = { kind: "note"; block: TakeBlock; end: boolean; x0: number; y0: number; midi: number; t0: number; t1: number; ctrl: boolean; ripple: boolean; moved: boolean };
-type Drag = NoteDrag | { kind: "pan"; x0: number; y0: number; t: number; bottom: number; moved: boolean } | { kind: "seek" } | { kind: "cue" };
+type DrawDrag = { kind: "draw"; x0: number; t0: number; t1: number; min: number; midi: number; moved: boolean };
+type Drag = NoteDrag | DrawDrag | { kind: "pan"; x0: number; y0: number; t: number; bottom: number; moved: boolean } | { kind: "seek" } | { kind: "cue" };
 
 /**
- * The take as note blocks on its own timeline: drag a block up or down to change its pitch (it
- * sings at the new pitch on release) and sideways to move it in time, drag its right end to change
- * its length, hold Ctrl while dragging to move everything after it too, wheel through time, Shift+wheel through pitch, Ctrl+wheel to
- * zoom, drag the background to pan. The playhead follows the take while Sing plays it. The strip
+ * The take as a piano roll on its own timeline, each note singing the next syllable in time order:
+ * drag on empty grid to draw a note (it starts on the grid line under the pointer and stretches as
+ * you drag), right-click a note to delete it, drag a block up or down to change its pitch (it sings
+ * at the new pitch on release) and sideways to move it in time, drag its right end to change its
+ * length, hold Ctrl while dragging to move everything after it too. Notes land on the grid (Grid
+ * picks the step, BPM its beat) unless Alt is held. Wheel through time, Shift+wheel through pitch,
+ * Ctrl+wheel to zoom, middle-drag or Shift+drag to pan. The playhead follows the take while Sing plays it. The strip
  * along the top is the whole take: click or drag it to jump there. Click the time ruler under it to
  * set where Sing starts (double-click: from the top again); Home and End jump to the ends.
  */
@@ -31,6 +54,8 @@ export function TakeEditor() {
   const view = useRef({ t: -250, bottom: NaN, pxPerMs: 0.12, follow: false, tail: false, wasPlaying: false });
   const geo = useRef({ w: 0, h: 0, rowH: 1 });
   const drag = useRef<Drag | null>(null);
+  const lastLen = useRef(0);
+  const grid = (free = false) => (free ? null : takeGrid(useSing.getState().take, useSing.getState().grid));
 
   const blocks = (): TakeBlock[] => {
     const take = useSing.getState().take;
@@ -38,15 +63,16 @@ export function TakeEditor() {
     if (c.take !== take) {
       const v = view.current;
       const grew = !!take && !!c.take && !take.source && !c.take.source && take.events.length > c.take.events.length;
-      const fresh = !take || !c.take || take.source !== c.take.source || (!take.source && take.events.length === 1);
+      const drawn = !c.take && take?.source === DRAWN;
+      const fresh = !drawn && (!take || !c.take || take.source !== c.take.source || (!take.source && take.events.length === 1));
       c.take = take;
       c.blocks = take ? takeBlocks(take) : [];
-      const lead = take?.source ? (take.events[0]?.t ?? 0) : 0;
       let lo = 0;
-      let hi = c.blocks[c.blocks.length - 1]?.t1 ?? 0;
+      let hi = 0;
+      for (const b of c.blocks) hi = Math.max(hi, b.t1);
       for (const n of take ? backingNotes(take) : []) {
-        lo = Math.min(lo, n.t - lead);
-        hi = Math.max(hi, n.t + n.dur - lead);
+        lo = Math.min(lo, n.t);
+        hi = Math.max(hi, n.t + n.dur);
       }
       c.lo = lo;
       c.hi = Math.max(lo + 1, hi);
@@ -72,6 +98,7 @@ export function TakeEditor() {
   const x = (t: number) => LEFT + (t - view.current.t) * view.current.pxPerMs;
   const y = (m: number) => geo.current.h - 4 - (m - view.current.bottom + 0.5) * geo.current.rowH;
   const barH = () => Math.max(4, geo.current.rowH - 3);
+  const midiAt = (py: number) => Math.max(24, Math.min(96, Math.round((geo.current.h - 4 - py) / geo.current.rowH + view.current.bottom - 0.5)));
 
   const ref = usePhosphor(({ ctx, w, h }) => {
     const v = view.current;
@@ -112,12 +139,32 @@ export function TakeEditor() {
     }
     beam(ctx, dotted, V.frame, 1, { dash: [1, 5] });
 
+    const g = grid();
+    const fine = g && g.step * v.pxPerMs >= 5 ? g.step : g && g.beat * v.pxPerMs >= 5 ? g.beat : 0;
     const step = v.pxPerMs > 0.2 ? 500 : v.pxPerMs > 0.06 ? 1000 : 5000;
     for (let t = Math.ceil(v.t / step) * step; t < v.t + span; t += step) {
       const xt = x(t);
       if (xt < LEFT) continue;
-      seg(ctx, xt, MAP + 3, xt, h, V.frame, 1, { dash: [1, 7], alpha: 0.7 });
+      seg(ctx, xt, MAP + 3, xt, fine ? TOP : h, V.frame, 1, { dash: [1, 7], alpha: 0.7 });
       if (t % 1000 === 0) label(ctx, `${t / 1000}s`, xt + 3, TOP - 6, { size: 9, color: TEXT.secondary, ls: 0.1 });
+    }
+    if (g && fine) {
+      const thin = new Path2D();
+      const beats = new Path2D();
+      const bars = new Path2D();
+      for (let n = Math.ceil((v.t - g.at) / fine); g.at + n * fine < v.t + span; n++) {
+        const t = g.at + n * fine;
+        const xt = x(t);
+        if (xt < LEFT) continue;
+        const beat = (t - g.at) / g.beat;
+        const on = Math.abs(beat - Math.round(beat)) < 1e-3;
+        const path = on && Math.round(beat) % 4 === 0 ? bars : on ? beats : thin;
+        path.moveTo(xt, TOP);
+        path.lineTo(xt, h);
+      }
+      beam(ctx, thin, V.frame, 1, { alpha: 0.35 });
+      beam(ctx, beats, V.frame, 1, { alpha: 0.8 });
+      beam(ctx, bars, V.blue, 1, { alpha: 0.45 });
     }
     seg(ctx, LEFT, MAP + 2, w, MAP + 2, V.frame, 1);
     seg(ctx, LEFT, TOP - 1, w, TOP - 1, V.frame, 1, { alpha: 0.6 });
@@ -186,11 +233,19 @@ export function TakeEditor() {
       if (b.text && b.text !== "~" && x0 >= LEFT) label(ctx, b.text.toUpperCase(), x0 + 1, yc - bh / 2 - 4, { size: 10, color: live || moving ? V.white : TEXT.secondary, ls: 0.12 });
     }
 
+    const dd = d?.kind === "draw" ? d : null;
+    if (dd) {
+      const x0 = Math.max(LEFT, x(dd.t0));
+      const r = new Path2D();
+      r.rect(x0, y(dd.midi) - bh / 2, Math.max(4, x(dd.t1) - x0), bh);
+      beam(ctx, r, V.amber, 1.6, { hot: true });
+    }
+
     if (head !== null) {
       const xh = x(head);
       if (xh >= LEFT && xh <= w) seg(ctx, xh, TOP, xh, h, V.white, 1, { dash: [3, 4], alpha: 0.7 });
     }
-    if (!bs.length) label(ctx, "PLAY THE KEYS TO RECORD A TAKE", LEFT + 12, h / 2, { size: 10, color: TEXT.secondary, ls: 0.12 });
+    if (!bs.length && !dd) label(ctx, "DRAG ON THE GRID TO DRAW NOTES, OR PLAY THE KEYS", LEFT + 12, h / 2, { size: 10, color: TEXT.secondary, ls: 0.12 });
   });
 
   const hit = (px: number, py: number): { block: TakeBlock; end: boolean } | null => {
@@ -216,9 +271,23 @@ export function TakeEditor() {
     useSing.getState().setCue(t <= lo + 1 ? null : Math.round(t));
   };
 
+  const pan = (px: number, py: number) => ({ kind: "pan" as const, x0: px, y0: py, t: view.current.t, bottom: view.current.bottom, moved: false });
+
   const down = (e: PointerEvent<HTMLCanvasElement>) => {
-    if (e.button !== 0) return;
     const [px, py] = at(e);
+    if (e.button === 2) {
+      const h = py >= TOP ? hit(px, py) : null;
+      if (h) removeTakeNote(h.block);
+      return;
+    }
+    if (e.button === 1) {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      drag.current = pan(px, py);
+      e.currentTarget.style.cursor = "grabbing";
+      return;
+    }
+    if (e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     if (py <= MAP + 2 && px >= LEFT) {
       drag.current = { kind: "seek" };
@@ -235,15 +304,34 @@ export function TakeEditor() {
     if (h) {
       const b = h.block;
       drag.current = { kind: "note", block: b, end: h.end, x0: px, y0: py, midi: b.midi, t0: b.t0, t1: b.t1, ctrl: e.ctrlKey || e.metaKey, ripple: e.ctrlKey || e.metaKey, moved: false };
-    } else drag.current = { kind: "pan", x0: px, y0: py, t: view.current.t, bottom: view.current.bottom, moved: false };
-    e.currentTarget.style.cursor = h ? cursorFor(h) : "grabbing";
+      e.currentTarget.style.cursor = cursorFor(h);
+      return;
+    }
+    if (e.shiftKey || px < LEFT) {
+      drag.current = pan(px, py);
+      e.currentTarget.style.cursor = "grabbing";
+      return;
+    }
+    const g = grid(e.altKey);
+    const t0 = Math.max(0, g ? snap(tAt(px), g, true) : tAt(px));
+    const min = g ? g.step : 40;
+    drag.current = { kind: "draw", x0: px, t0, t1: t0 + Math.max(min, lastLen.current || (g ? g.step : 250)), min, midi: midiAt(py), moved: false };
+    e.currentTarget.style.cursor = "crosshair";
   };
   const move = (e: PointerEvent<HTMLCanvasElement>) => {
     const [px, py] = at(e);
     const d = drag.current;
     const rowH = geo.current.rowH;
     if (!d) {
-      e.currentTarget.style.cursor = py < TOP && px >= LEFT ? "pointer" : cursorFor(hit(px, py));
+      const h = hit(px, py);
+      e.currentTarget.style.cursor = py < TOP && px >= LEFT ? "pointer" : h ? cursorFor(h) : px >= LEFT ? "crosshair" : "grab";
+      return;
+    }
+    if (d.kind === "draw") {
+      if (Math.abs(px - d.x0) > 3) d.moved = true;
+      if (!d.moved) return;
+      const g = grid(e.altKey);
+      d.t1 = Math.max(d.t0 + d.min, g ? snap(tAt(px), g) : tAt(px));
       return;
     }
     if (d.kind === "seek") {
@@ -259,11 +347,14 @@ export function TakeEditor() {
       if (Math.abs(px - d.x0) > 2 || Math.abs(py - d.y0) > 2) d.moved = true;
       if (!d.moved) return;
       const dt = (px - d.x0) / view.current.pxPerMs;
+      const g = grid(e.altKey);
       d.ripple = d.ctrl || e.ctrlKey || e.metaKey;
-      if (d.end) d.t1 = Math.max(b.t0 + 20, b.t1 + dt);
-      else {
+      if (d.end) {
+        const t1 = snap(b.t1 + dt, g);
+        d.t1 = t1 > b.t0 + 10 ? t1 : b.t0 + (g ? g.step : 20);
+      } else {
         d.midi = Math.max(24, Math.min(96, b.midi + Math.round((d.y0 - py) / rowH)));
-        d.t0 = Math.max(0, b.t0 + dt);
+        d.t0 = Math.max(0, snap(b.t0 + dt, g));
         d.t1 = d.t0 + (b.t1 - b.t0);
       }
       return;
@@ -278,6 +369,14 @@ export function TakeEditor() {
     const d = drag.current;
     drag.current = null;
     e.currentTarget.style.cursor = "grab";
+    if (d?.kind === "draw") {
+      if (!addTakeNote(d.t0, d.t1, d.midi)) return;
+      lastLen.current = d.t1 - d.t0;
+      const take = useSing.getState().take;
+      const made = take ? takeBlocks(take).find((b) => b.midi === d.midi && Math.abs(b.t0 - d.t0) < 1) : undefined;
+      if (made) auditionTake(made, made.midi, useStore.getState().body);
+      return;
+    }
     if (d?.kind !== "note") return;
     const b = d.block;
     if (d.midi !== b.midi) moveTakeNote(b, d.midi);
@@ -330,7 +429,42 @@ export function TakeEditor() {
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={cancel}
-      aria-label="Take editor: your take's notes on a timeline. Drag a note up or down to change its pitch and sideways to move it in time, drag its right end to change its length, hold Ctrl to move everything after it too; scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom. Click the strip along the top to jump anywhere in the take, click the time ruler to set where Sing starts, double-click it to start from the top; Home and End jump to the ends."
+      onContextMenu={(e) => e.preventDefault()}
+      aria-label="Take editor: your take's notes as a piano roll, each note singing the next syllable. Drag on empty grid to draw a note, right-click a note to delete it, drag a note up or down to change its pitch and sideways to move it in time, drag its right end to change its length, hold Ctrl to move everything after it too, hold Alt to place off the grid; middle-drag or Shift+drag to pan, scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom. Click the strip along the top to jump anywhere in the take, click the time ruler to set where Sing starts, double-click it to start from the top; Home and End jump to the ends."
     />
+  );
+}
+
+/** The editor's grid step and the beats a minute it counts in (an imported file brings its own). */
+export function GridTools() {
+  const division = useSing((s) => s.grid);
+  const setGrid = useSing((s) => s.setGrid);
+  const bpm = useSing((s) => s.take?.bpm ?? DEFAULT_BPM);
+  const hasTake = useSing((s) => !!s.take);
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft !== null && Number(draft) > 0) setTakeBpm(Number(draft));
+    setDraft(null);
+  };
+  return (
+    <>
+      <Menu label="Grid" value={String(division)} options={GRIDS.map((g) => ({ value: String(g), label: g ? `Grid 1/${g}` : "Grid off" }))} onChange={(v) => setGrid(Number(v))} />
+      <label className="menu bpm" title="Beats a minute the grid counts in (an imported MIDI brings its own)">
+        <input
+          type="number"
+          min={20}
+          max={400}
+          aria-label="Grid tempo in beats a minute"
+          disabled={!hasTake}
+          value={draft ?? String(Math.round(bpm * 100) / 100)}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+          }}
+        />
+        <span>BPM</span>
+      </label>
+    </>
   );
 }

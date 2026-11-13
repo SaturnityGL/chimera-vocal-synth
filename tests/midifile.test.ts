@@ -3,7 +3,7 @@
  * and note-on velocity 0 end notes, drums are dropped, and a chord sings its top note.
  */
 import { describe, expect, test } from "bun:test";
-import { parseMidi, melodyLine, underLine, inRange } from "../src/ui/midifile.ts";
+import { parseMidi, midiBeat, melodyLine, underLine, inRange } from "../src/ui/midifile.ts";
 
 function vlq(n: number): number[] {
   const out = [n & 0x7f];
@@ -150,4 +150,11 @@ test("pickVocal takes a track named like a voice, else the busiest", async () =>
   const n = (k: number) => Array.from({ length: k }, (_, i) => ({ t: i * 100, dur: 90, midi: 60, vel: 90 }));
   expect(pickVocal([{ name: "Strings", notes: n(9) }, { name: "Lead Vox", notes: n(3) }] as never)).toBe(1);
   expect(pickVocal([{ name: "Strings", notes: n(2) }, { name: "Piano", notes: n(5) }] as never)).toBe(1);
+});
+
+describe("midiBeat", () => {
+  test("the first tempo gives the beat in ms, 500 when the file sets none", () => {
+    expect(midiBeat(file([track([[0, 0xff, 0x51, 3, 0x09, 0x27, 0xc0], [0, 0x90, 60, 100], [480, 0x80, 60, 0]])]))).toBe(600);
+    expect(midiBeat(file([track([[0, 0x90, 60, 100], [480, 0x80, 60, 0]])]))).toBe(500);
+  });
 });

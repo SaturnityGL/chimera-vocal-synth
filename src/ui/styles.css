@@ -1410,6 +1410,33 @@ button.primary.large {
   color: var(--text);
 }
 
+.menu.bpm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+}
+
+.menu.bpm input {
+  width: 44px;
+  padding: 2px 4px 2px 8px;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.menu.bpm input:disabled {
+  opacity: 0.5;
+}
+
 .screen-tools .menu select {
   min-height: 0;
   padding: 2px 22px 2px 8px;

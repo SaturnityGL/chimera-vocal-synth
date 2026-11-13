@@ -437,7 +437,7 @@ describe("a main button pressed before the audio is up", () => {
   });
 });
 
-const { importTake, backingNotes, takeBlocks, retimeTakeNote, takeTimes, takePlayhead, TAKE_ID } = await import("../src/ui/singing.ts");
+const { importTake, backingNotes, takeBlocks, retimeTakeNote, takeTimes, takePlayhead, TAKE_ID, addTakeNote, removeTakeNote, setTakeBpm, takeGrid, snap, DRAWN } = await import("../src/ui/singing.ts");
 
 describe("an imported take: backing tracks, joined words, retimed notes", () => {
 
@@ -490,5 +490,52 @@ describe("an imported take: backing tracks, joined words, retimed notes", () => 
     stopSinging();
     importTake("song.mid", [{ t: 0, dur: 300, midi: 60, vel: 90 }]);
     expect(useSing.getState().cue).toBeNull();
+  });
+});
+
+describe("the piano roll: drawn notes, deleted notes, the grid", () => {
+  test("a note drawn into an empty editor starts a take; syllables follow time order; same-pitch overlaps are refused", () => {
+    stopSinging();
+    useSing.setState({ take: null });
+    useSing.getState().setLyrics("dai sy bell");
+    expect(addTakeNote(500, 1000, 64)).toBe(true);
+    const take = () => useSing.getState().take!;
+    expect(take().source).toBe(DRAWN);
+    expect(addTakeNote(0, 400, 67)).toBe(true);
+    expect(addTakeNote(800, 1200, 64)).toBe(false);
+    expect(addTakeNote(1000, 1500, 60)).toBe(true);
+    expect(takeBlocks(take()).map((b) => [b.t0, b.t1, b.midi, b.text])).toEqual([[0, 400, 67, "dai"], [500, 1000, 64, "sy"], [1000, 1500, 60, "bell"]]);
+    expect(takeTimes(take())).toEqual(take().events.map((e) => e.t));
+    removeTakeNote(takeBlocks(take())[0]);
+    expect(takeBlocks(take()).map((b) => [b.t0, b.midi, b.text])).toEqual([[500, 64, "dai"], [1000, 60, "sy"]]);
+  });
+
+  test("the grid steps by the take's beat, from where its first beat falls", () => {
+    expect(takeGrid(null, 0)).toBeNull();
+    expect(takeGrid(null, 16)).toEqual({ step: 125, at: 0, beat: 500 });
+    const g = { step: 125, at: 40 };
+    expect(snap(230, g)).toBe(290);
+    expect(snap(230, g, true)).toBe(165);
+    expect(snap(230, null)).toBe(230);
+    useSing.getState().setLyrics("la la");
+    importTake("song.mid", [{ t: 1500, dur: 400, midi: 60, vel: 90 }], [{ name: "Piano", notes: [{ t: 1000, dur: 500, midi: 48, vel: 80 }] }], 600);
+    const take = useSing.getState().take!;
+    expect(take.bpm).toBe(100);
+    expect(take.grid0).toBe(-1000);
+    expect(takeGrid(take, 4)).toEqual({ step: 600, at: -1000, beat: 600 });
+    expect(snap(0, takeGrid(take, 4))).toBe(200);
+    setTakeBpm(1000);
+    expect(useSing.getState().take!.bpm).toBe(400);
+  });
+
+  test("an imported take sings on the same clock as its backing, also after a note is retimed", () => {
+    useSing.getState().setLyrics("la ma");
+    importTake("song.mid", [{ t: 1500, dur: 400, midi: 60, vel: 90 }, { t: 2000, dur: 400, midi: 62, vel: 90 }], [{ name: "Piano", notes: [{ t: 1000, dur: 500, midi: 48, vel: 80 }] }]);
+    const take = () => useSing.getState().take!;
+    expect(takeTimes(take()).slice(0, 1)).toEqual([500]);
+    retimeTakeNote(takeBlocks(take())[1], 1200, 1600);
+    expect(takeBlocks(take()).map((b) => b.t0)).toEqual([500, 1200]);
+    expect(backingNotes(take()).map((n) => n.t)).toEqual([0]);
+    expect(takeTimes(take())).toEqual(take().events.map((e) => e.t));
   });
 });

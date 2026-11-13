@@ -11,6 +11,7 @@
 > - **Backing tracks** for imported MIDI: pick which track is the voice in **Sung track**, and the file's other tracks play underneath on a simple piano, following Tempo, Key and Volume. **Backing** turns tracks on or off, even mid-song.
 > - **One note per word**: end a word with `+` in the lyrics (`fire+`) and it sings the whole word on a single note instead of a syllable per note. Handy when a MIDI gives one note to a word the voice would split.
 > - **Legato** for imported MIDI (on by default): piano parts play short, detached notes, so each sung note now holds until the next one starts and glides into it instead of stopping (rests over about a second stay rests). For a piano track that carries both hands, the tune is the top line and the notes under it move to a backing track called "(under the tune)".
+> - **Piano roll editing**: the Pitch editor works like a piano roll. Drag on empty grid to draw a note (each note sings the next syllable in time order, so the gaps you draw are the gaps you hear), right-click a note to delete it. Notes snap to a grid (Grid: off, 1/4, 1/8, 1/16, 1/32) counted at a BPM you can set; an imported MIDI brings its own tempo and beat. Hold Alt to place off the grid. Middle-drag or Shift+drag pans. You can open Edit with no take and draw a song from scratch.
 
 A physical-modeling voice synthesizer in the browser. Every sound comes from a simulated
 airway (lungs, vocal folds or syrinx, a branched vocal tract, lips, nose), not from samples.
