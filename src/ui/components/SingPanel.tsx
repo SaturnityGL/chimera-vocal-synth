@@ -174,6 +174,7 @@ function SingActions() {
     const hooks = !record
       ? {}
       : {
+          whole: true,
           onStart: () => {
             const canvas = document.querySelector<HTMLCanvasElement>(".screen.left canvas");
             const audio = engine.recordStream();

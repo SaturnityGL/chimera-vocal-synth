@@ -437,7 +437,7 @@ describe("a main button pressed before the audio is up", () => {
   });
 });
 
-const { importTake, backingNotes, takeBlocks, retimeTakeNote, takeTimes } = await import("../src/ui/singing.ts");
+const { importTake, backingNotes, takeBlocks, retimeTakeNote, takeTimes, takePlayhead, TAKE_ID } = await import("../src/ui/singing.ts");
 
 describe("an imported take: backing tracks, joined words, retimed notes", () => {
 
@@ -473,5 +473,22 @@ describe("an imported take: backing tracks, joined words, retimed notes", () => 
     expect(blocks()[0].t1).toBe(150);
     const take = useSing.getState().take!;
     expect(takeTimes(take)).toEqual(take.events.map((e) => e.t));
+  });
+
+  test("Sing starts the take at the cue, on the syllable that falls there; a Video and a new import start from the top", async () => {
+    useSing.getState().setLyrics("la ma no");
+    importTake("song.mid", [0, 1000, 2000].map((t, k) => ({ t, dur: 400, midi: 60 + k, vel: 90 })));
+    useSing.getState().setCue(900);
+    expect(await playTune(TAKE_ID, MALE, () => Promise.resolve())).toBe(true);
+    expect(takePlayhead()!).toBeGreaterThan(700);
+    expect(takePlayhead()!).toBeLessThan(800);
+    await new Promise((r) => setTimeout(r, 330));
+    expect(useSing.getState().at).toBe(1);
+    stopSinging();
+    expect(await playTune(TAKE_ID, MALE, () => Promise.resolve(), { whole: true })).toBe(true);
+    expect(takePlayhead()!).toBeLessThan(0);
+    stopSinging();
+    importTake("song.mid", [{ t: 0, dur: 300, midi: 60, vel: 90 }]);
+    expect(useSing.getState().cue).toBeNull();
   });
 });

@@ -83,6 +83,9 @@ interface SingState {
   at: number;
   /** what the keys last sang, which Sing plays back as the tune "take" */
   take: Take | null;
+  /** where Sing starts the take (ms on its playback clock; null: from the top, intro and all) */
+  cue: number | null;
+  setCue: (t: number | null) => void;
   clearTake: () => void;
   setLyrics: (text: string) => void;
   setCursor: (i: number) => void;
@@ -157,10 +160,12 @@ export const useSing = create<SingState>((set, get) => ({
   playing: null,
   at: -1,
   take: takeAtLoad,
+  cue: null,
+  setCue: (t) => set({ cue: t }),
   clearTake: () => {
     if (get().playing === TAKE_ID) stopDemo();
     taking = null;
-    set((s) => ({ take: null, tune: s.tune === TAKE_ID ? TUNES[0].id : s.tune }));
+    set((s) => ({ take: null, cue: null, tune: s.tune === TAKE_ID ? TUNES[0].id : s.tune }));
   },
   setLyrics: (text) => {
     stopDemo();
@@ -337,6 +342,7 @@ function record(midi: number, vel: number): void {
     const st = useSing.getState();
     if (st.take?.source) return;
     taking = { t0: t, take: { lyrics: st.lyrics, start: st.cursor, events: [] } };
+    useSing.setState({ cue: null });
   }
   const tk = taking.take;
   if (tk.events.length >= TAKE_MAX) return;
@@ -380,7 +386,7 @@ export function importTake(source: string, notes: Note[], backing: { name: strin
     if (keep.length) tracks.push({ name: b.name, on: true, notes: keep.flatMap((n) => [Math.round(n.t - first), Math.max(1, Math.round(n.dur)), n.midi, Math.max(1, Math.min(127, n.vel))]) });
   }
   if (tracks.length) take.backing = tracks;
-  useSing.setState({ take, tune: TAKE_ID, cursor: 0 });
+  useSing.setState({ take, tune: TAKE_ID, cursor: 0, cue: null });
 }
 
 /** The take's backing tracks that are on, merged into one list in time order (`track` indexes `take.backing`). */
@@ -560,6 +566,8 @@ export interface TuneHooks {
   onEnd?: () => void;
   /** stopped before the end, from anywhere (Stop, another tune, the mode or body changing) */
   onStop?: () => void;
+  /** a take plays from its start whatever the cue (a Video) */
+  whole?: boolean;
 }
 
 let demoRun: TuneRun | null = null;
@@ -664,14 +672,18 @@ async function playTake(body: BodyMix, ready?: () => Promise<void>, hooks: TuneH
   let i = take.start % syls.length;
   hooks.onStart?.();
   const lead = take.source ? (events[0]?.t ?? 0) : 0;
-  const run = { timer: null as ReturnType<typeof setTimeout> | null, hooks, startAt: performance.now(), tempo, lead };
+  const end = times[times.length - 1] ?? 0;
+  const from = hooks.whole || st.cue === null || st.cue >= end ? -lead : Math.max(-lead, st.cue);
+  const run = { timer: null as ReturnType<typeof setTimeout> | null, hooks, startAt: performance.now() - (from + lead) / tempo, tempo, lead };
   const due = (k: number) => Math.max(0, run.startAt + TAKE_LEAD + (lead + times[k]) / tempo - performance.now());
   const offOf: number[] = events.map(() => -1);
+  const onOf: number[] = events.map(() => -1);
   const held = new Map<number, number>();
   events.forEach((e, k) => {
     const on = held.get(e.midi);
     if (on !== undefined) {
       offOf[on] = k;
+      onOf[k] = on;
       held.delete(e.midi);
     }
     if (e.vel >= 0) held.set(e.midi, k);
@@ -680,10 +692,19 @@ async function playTake(body: BodyMix, ready?: () => Promise<void>, hooks: TuneH
   const backingEnd = backing.reduce((m, n) => Math.max(m, n.t + n.dur), 0);
   const ends = () => run.startAt + TAKE_LEAD + backingEnd / tempo;
   if (backing.length) startBacking(backing, run.startAt + TAKE_LEAD, tempo, shift, (k) => useSing.getState().take?.backing?.[k]?.on !== false);
+  let first = 0;
+  while (first < events.length && times[first] < from) {
+    if (events[first].vel >= 0) i = (i + joinedAt(syls, i)) % syls.length;
+    first++;
+  }
   replay = run;
   useSing.setState({ playing: TAKE_ID, at: -1 });
   const step = (k: number) => {
     if (replay !== run) return;
+    if (k < events.length && events[k].vel < 0 && onOf[k] >= 0 && onOf[k] < first) {
+      run.timer = setTimeout(() => step(k + 1), k + 1 < events.length ? due(k + 1) : 0);
+      return;
+    }
     if (k >= events.length) {
       for (const m of [...keys]) noteOff(m, body, syls[i]);
       run.timer = setTimeout(
@@ -720,7 +741,7 @@ async function playTake(body: BodyMix, ready?: () => Promise<void>, hooks: TuneH
     } else noteOff(e.midi + shift, body, syls[i]);
     run.timer = setTimeout(() => step(k + 1), k + 1 < events.length ? due(k + 1) : 0);
   };
-  run.timer = setTimeout(() => step(0), due(0));
+  run.timer = setTimeout(() => step(first), first < events.length ? due(first) : 0);
   return true;
 }
 
