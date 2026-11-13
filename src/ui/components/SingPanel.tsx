@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.ts";
-import { useSing, playTune, stopSinging, soundingSyllable, sungNow, TUNES, ensureDictionary } from "../singing.ts";
+import { useSing, playTune, stopSinging, soundingSyllable, sungNow, TUNES, TAKE_ID, ensureDictionary } from "../singing.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { canRecord, Clip } from "../../song/record.ts";
 import { mouthWords } from "../mouthWords.ts";
@@ -138,6 +138,8 @@ function SingActions() {
   const playing = useSing((s) => s.playing);
   const tune = useSing((s) => s.tune);
   const setTune = useSing((s) => s.setTune);
+  const hasTake = useSing((s) => !!s.take);
+  const clearTake = useSing((s) => s.clearTake);
   const [pending, setPending] = useState(false);
   const [recording, setRecording] = useState(false);
   const [clip, setClip] = useState<{ file: File; url: string } | null>(null);
@@ -217,12 +219,17 @@ function SingActions() {
         label="Tune"
         icon="note"
         value={tune}
-        options={TUNES.map((t) => ({ value: t.id, label: t.name }))}
+        options={(hasTake ? [{ value: TAKE_ID, label: "Your take" }] : []).concat(TUNES.map((t) => ({ value: t.id, label: t.name })))}
         onChange={(id) => {
           setTune(id);
           if ((playing || pending) && !recording) sing(id);
         }}
       />
+      {hasTake && tune === TAKE_ID && (
+        <Chip toggle={false} onClick={clearTake} title="Forget what the keys sang (the next key starts a new take)">
+          Clear
+        </Chip>
+      )}
       {canRecord() && (
         <Chip toggle={false} onClick={() => (recording ? stop() : sing(tune, true))} title="Sing it again and record the face into a video">
           {recording ? "Cancel" : "Video"}

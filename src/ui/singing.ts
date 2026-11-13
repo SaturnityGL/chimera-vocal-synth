@@ -35,6 +35,23 @@ export const DEFAULT_LYRICS = "Hello there, I am a voice made of air.";
 /** sung when the lyrics are empty */
 const AH: Syllable = { text: "ah", onset: [], nucleus: { ipa: "ɑ", stress: 1 }, coda: [], wordEnd: true, phraseEnd: false };
 
+/** the Tune menu's entry for what the keys last sang */
+export const TAKE_ID = "take";
+
+/** A key going down (vel ≥ 0) or up (vel −1), `t` ms into the take. */
+export interface TakeEvent {
+  t: number;
+  midi: number;
+  vel: number;
+}
+
+/** What the keys sang: the words they sang, the syllable they started on, every key down and up. */
+export interface Take {
+  lyrics: string;
+  start: number;
+  events: TakeEvent[];
+}
+
 interface SingState {
   lyrics: string;
   syllables: Syllable[];
@@ -52,6 +69,9 @@ interface SingState {
   playing: string | null;
   /** index in `syllables` of the one the tune is singing (−1: none, or the tune sings "la") */
   at: number;
+  /** what the keys last sang, which Sing plays back as the tune "take" */
+  take: Take | null;
+  clearTake: () => void;
   setLyrics: (text: string) => void;
   setCursor: (i: number) => void;
   setVibrato: (cents: number) => void;
@@ -70,7 +90,7 @@ function kept(): { lyrics: string; tune: string; tempo: number; key: number } {
     if (!k) return d;
     return {
       lyrics: typeof k.lyrics === "string" ? k.lyrics : d.lyrics,
-      tune: TUNES.some((t) => t.id === k.tune) ? (k.tune as string) : d.tune,
+      tune: k.tune === TAKE_ID || TUNES.some((t) => t.id === k.tune) ? (k.tune as string) : d.tune,
       tempo: typeof k.tempo === "number" && k.tempo >= 0.5 && k.tempo <= 1.5 ? k.tempo : d.tempo,
       key: typeof k.key === "number" && Math.abs(k.key) <= 12 ? Math.round(k.key) : d.key,
     };
@@ -79,23 +99,53 @@ function kept(): { lyrics: string; tune: string; tempo: number; key: number } {
   }
 }
 
+const KEPT_TAKE = "chimera-take";
+/** a take's length cap, in key downs and ups */
+const TAKE_MAX = 4000;
+
+/** the last session's take, if it reads as one */
+function keptTake(): Take | null {
+  try {
+    const k = JSON.parse(localStorage.getItem(KEPT_TAKE) ?? "null") as Partial<Take> | null;
+    if (!k || typeof k.lyrics !== "string" || typeof k.start !== "number" || !Array.isArray(k.events)) return null;
+    const events = k.events.filter((e): e is TakeEvent => !!e && typeof e.t === "number" && typeof e.midi === "number" && typeof e.vel === "number").slice(0, TAKE_MAX);
+    return events.some((e) => e.vel >= 0) ? { lyrics: k.lyrics, start: Math.max(0, Math.round(k.start)), events } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** the take the keys are adding to: a new one starts on the first key after the words or the start syllable change */
+let taking: { t0: number; take: Take } | null = null;
+
 const atLoad = kept();
+const takeAtLoad = keptTake();
 
 export const useSing = create<SingState>((set, get) => ({
   lyrics: atLoad.lyrics,
   syllables: lyricsToSyllables(atLoad.lyrics),
   cursor: 0,
   vibrato: 35,
-  tune: atLoad.tune,
+  tune: atLoad.tune === TAKE_ID && !takeAtLoad ? TUNES[0].id : atLoad.tune,
   tempo: atLoad.tempo,
   key: atLoad.key,
   playing: null,
   at: -1,
+  take: takeAtLoad,
+  clearTake: () => {
+    if (get().playing === TAKE_ID) stopDemo();
+    taking = null;
+    set((s) => ({ take: null, tune: s.tune === TAKE_ID ? TUNES[0].id : s.tune }));
+  },
   setLyrics: (text) => {
     stopDemo();
+    taking = null;
     set({ lyrics: text, syllables: lyricsToSyllables(text), cursor: 0 });
   },
-  setCursor: (i) => set({ cursor: Math.max(0, Math.min(i, Math.max(0, get().syllables.length - 1))) }),
+  setCursor: (i) => {
+    taking = null;
+    set({ cursor: Math.max(0, Math.min(i, Math.max(0, get().syllables.length - 1))) });
+  },
   setVibrato: (cents) => set({ vibrato: cents }),
   setTune: (id) => set({ tune: id }),
   setTempo: (x) => set({ tempo: x }),
@@ -109,6 +159,23 @@ useSing.subscribe((s, p) => {
   } catch {
     // not kept: the session still works
   }
+});
+
+/** the take is written out once the keys have been quiet a moment, not on every key */
+let takeSave: ReturnType<typeof setTimeout> | null = null;
+useSing.subscribe((s, p) => {
+  if (s.take === p.take) return;
+  if (takeSave) clearTimeout(takeSave);
+  takeSave = setTimeout(() => {
+    takeSave = null;
+    try {
+      const t = useSing.getState().take;
+      if (t) localStorage.setItem(KEPT_TAKE, JSON.stringify(t));
+      else localStorage.removeItem(KEPT_TAKE);
+    } catch {
+      // not kept: the take still plays this session
+    }
+  }, 800);
 });
 
 /** Load the pronouncing dictionary, then re-read the lyrics with it (the cursor stays). */
@@ -221,20 +288,45 @@ function glide(midi: number, text: string): void {
   s.note = addNote(midi, t, text);
 }
 
-export function singNoteOn(midi: number, velocity: number, body: BodyMix): void {
-  stopDemo();
+/** Key `midi` sings syllable i of `syls`; returns the index of the next. */
+function noteOn(midi: number, velocity: number, body: BodyMix, syls: Syllable[], i: number): number {
   keys = keys.filter((k) => k !== midi).concat(midi);
-  const st = useSing.getState();
-  const syls = st.syllables.length ? st.syllables : [AH];
-  const i = st.cursor % syls.length;
   const syl = syls[i];
   if (syl.melisma && sounding) glide(midi, syl.text);
   // a melisma with nothing held: sing its vowel again, without the onset
   else startNote(syl.melisma ? { ...parentOf(syls, i), onset: [] } : syl, midi, velocity, body, syl.text);
-  useSing.setState({ cursor: (i + 1) % syls.length });
+  return (i + 1) % syls.length;
+}
+
+/** The record of the take being played now, if the keys are playing one. */
+function record(midi: number, vel: number): void {
+  const t = performance.now();
+  if (!taking) {
+    if (vel < 0) return;
+    const st = useSing.getState();
+    taking = { t0: t, take: { lyrics: st.lyrics, start: st.cursor, events: [] } };
+  }
+  const tk = taking.take;
+  if (tk.events.length >= TAKE_MAX) return;
+  tk.events.push({ t: Math.round(t - taking.t0), midi, vel });
+  useSing.setState({ take: { ...tk }, tune: TAKE_ID });
+}
+
+export function singNoteOn(midi: number, velocity: number, body: BodyMix): void {
+  stopDemo();
+  record(midi, velocity);
+  const st = useSing.getState();
+  const syls = st.syllables.length ? st.syllables : [AH];
+  useSing.setState({ cursor: noteOn(midi, velocity, body, syls, st.cursor % syls.length) });
 }
 
 export function singNoteOff(midi: number, body: BodyMix): void {
+  if (keys.includes(midi)) record(midi, -1);
+  const st = useSing.getState();
+  noteOff(midi, body, st.syllables[st.cursor]);
+}
+
+function noteOff(midi: number, body: BodyMix, next: Syllable | undefined): void {
   keys = keys.filter((k) => k !== midi);
   const s = sounding;
   if (!s || s.midi !== midi) return;
@@ -247,8 +339,7 @@ export function singNoteOff(midi: number, body: BodyMix): void {
   s.note.t1 = now();
   sounding = null;
   // a melisma comes next: this vowel carries on there, and the coda waits for the chain's end
-  const st = useSing.getState();
-  if (st.syllables[st.cursor]?.melisma) return;
+  if (next?.melisma) return;
   const gs = planNoteOff(s.syl, midi, body);
   if (!gs.length) return;
   const tag = nextTag;
@@ -310,6 +401,7 @@ engine.onPlanned((m) => {
  * singing. `hooks` follow the run: onStart only once nothing can cancel it before it's sent.
  */
 export async function playTune(id: string, body: BodyMix, ready?: () => Promise<void>, hooks: TuneHooks = {}): Promise<boolean> {
+  if (id === TAKE_ID) return playTake(body, ready, hooks);
   const tune = TUNES.find((t) => t.id === id);
   if (!tune) return false;
   stopSinging();
@@ -347,8 +439,81 @@ export async function playTune(id: string, body: BodyMix, ready?: () => Promise<
   return true;
 }
 
+/** a pause in a take longer than this plays back as this long (ms) */
+const TAKE_GAP = 2000;
+
+let replay: { timer: ReturnType<typeof setTimeout> | null; hooks: TuneHooks } | null = null;
+
+function releaseKeys(): void {
+  if (sounding) {
+    engine.release(sounding.tag);
+    engine.release(sounding.tag + 1);
+    sounding.note.t1 = now();
+    sounding = null;
+  }
+  keys = [];
+}
+
+/** Sing the take back through the keys' own path, at the chosen tempo and key. */
+async function playTake(body: BodyMix, ready?: () => Promise<void>, hooks: TuneHooks = {}): Promise<boolean> {
+  const take = useSing.getState().take;
+  if (!take) return false;
+  stopSinging();
+  const token = demoToken;
+  await ready?.();
+  try {
+    await g2p.load();
+  } catch {
+    // letter-to-sound rules
+  }
+  if (token !== demoToken) return false;
+  const st = useSing.getState();
+  const own = lyricsToSyllables(take.lyrics);
+  const syls = own.length ? own : [AH];
+  const same = take.lyrics === st.lyrics;
+  const shift = st.key;
+  const tempo = st.tempo;
+  const events = take.events;
+  const waits = events.map((e, k) => (k ? Math.min(TAKE_GAP, e.t - events[k - 1].t) / tempo : 150));
+  let i = take.start % syls.length;
+  hooks.onStart?.();
+  const run = { timer: null as ReturnType<typeof setTimeout> | null, hooks };
+  replay = run;
+  useSing.setState({ playing: TAKE_ID, at: -1 });
+  const step = (k: number) => {
+    if (replay !== run) return;
+    if (k >= events.length) {
+      for (const m of [...keys]) noteOff(m, body, syls[i]);
+      run.timer = setTimeout(() => {
+        if (replay !== run) return;
+        replay = null;
+        useSing.setState({ playing: null, at: -1 });
+        hooks.onEnd?.();
+      }, 400);
+      return;
+    }
+    const e = events[k];
+    if (e.vel >= 0) {
+      const at = i;
+      i = noteOn(e.midi + shift, e.vel, body, syls, i);
+      if (same) useSing.setState({ at });
+    } else noteOff(e.midi + shift, body, syls[i]);
+    run.timer = setTimeout(() => step(k + 1), k + 1 < events.length ? waits[k + 1] : 0);
+  };
+  run.timer = setTimeout(() => step(0), waits[0]);
+  return true;
+}
+
 function stopDemo(): void {
   demoToken++;
+  const r = replay;
+  if (r) {
+    replay = null;
+    if (r.timer) clearTimeout(r.timer);
+    releaseKeys();
+    useSing.setState({ playing: null, at: -1 });
+    r.hooks.onStop?.();
+  }
   const d = demoRun;
   if (!d) return;
   engine.stopSpeech();
@@ -379,19 +544,13 @@ export function tickSinging(): void {
 /** Stop everything sung (leaving Sing mode, changing body): demo, notes and endings. */
 export function stopSinging(): void {
   stopDemo();
-  if (sounding) {
-    engine.release(sounding.tag);
-    engine.release(sounding.tag + 1);
-    sounding.note.t1 = now();
-    sounding = null;
-  }
+  releaseKeys();
   for (const t of tails) {
     engine.release(t);
     engine.release(t + 1);
   }
   tails.length = 0;
   exhalesLive = false;
-  keys = [];
 }
 
 export { TUNES };

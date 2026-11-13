@@ -1,5 +1,10 @@
 # CHIMERA
 
+> **This is a community fork** of [jamesondh/chimera-vocal-synth](https://github.com/jamesondh/chimera-vocal-synth), built on its `t3/explore-easy-songmaking` work. All credit for the engine and app goes to the original project; anything here is free for upstream to take.
+>
+> **Added in this fork:**
+> - **Always-on take recording** in the Sing tab: every note you play on the keys or MIDI is recorded with your timing, and Sing plays it back as "Your take" (Tempo and Key apply). The take survives reloads; Clear starts over.
+
 A physical-modeling voice synthesizer in the browser. Every sound comes from a simulated
 airway (lungs, vocal folds or syrinx, a branched vocal tract, lips, nose), not from samples.
 The engine is Rust, compiled to WebAssembly for an AudioWorklet; the same code runs natively
