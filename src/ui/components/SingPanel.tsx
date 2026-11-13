@@ -9,6 +9,7 @@ import { Keys, MidiButton } from "./Keys.tsx";
 import { ActionBar, PrimaryButton } from "./ActionBar.tsx";
 import { Menu } from "./Controls.tsx";
 import { PianoRoll } from "./PianoRoll.tsx";
+import { TakeEditor } from "./TakeEditor.tsx";
 import { SpectrumView } from "./SpectrumView.tsx";
 import { Chip, Screen } from "./Screen.tsx";
 import { EncoderPages } from "./Encoder.tsx";
@@ -17,6 +18,7 @@ import type { InfoFn } from "./AnatomyView.tsx";
 
 /** epilarynx narrowing for the singer's ring (measured: +3 to +12 dB at 2.4–3.6 kHz, adult male) */
 const RING = 0.85;
+const ROLL_VIEW = "chimera-roll-view";
 
 /** the syllable being sung now: the tune's, or the one the held key is singing */
 function syllableNow(): string | null {
@@ -256,11 +258,39 @@ export function SingRight() {
   useEffect(ensureDictionary, []);
   const ring = useStore((s) => s.artic.epilarynx >= RING - 0.05);
   const next = useSing((s) => (s.playing ? null : (s.syllables[s.cursor]?.text ?? null)));
+  const hasTake = useSing((s) => !!s.take);
+  const [edit, setEdit] = useState(() => {
+    try {
+      return localStorage.getItem(ROLL_VIEW) === "edit";
+    } catch {
+      return false;
+    }
+  });
+  const toggleEdit = () => {
+    setEdit(!edit);
+    try {
+      localStorage.setItem(ROLL_VIEW, edit ? "live" : "edit");
+    } catch {
+      // not kept: the view still switches
+    }
+  };
+  const editing = edit && hasTake;
   return (
     <div className="right right-sing">
       <SingActions />
-      <Screen className="s-roll" title="Pitch">
-        <PianoRoll />
+      <Screen
+        className="s-roll"
+        title="Pitch"
+        sub={editing ? "Drag notes up or down" : ""}
+        tools={
+          hasTake && (
+            <Chip on={edit} onClick={toggleEdit} title="Edit your take: drag a note up or down to change its pitch; scroll to move through time, Shift+scroll for pitch, Ctrl+scroll to zoom">
+              Edit
+            </Chip>
+          )
+        }
+      >
+        {editing ? <TakeEditor /> : <PianoRoll />}
       </Screen>
       <Screen className="s-lyrics" title="Lyrics">
         <Lyrics />
