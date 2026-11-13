@@ -50,6 +50,8 @@ export interface Take {
   lyrics: string;
   start: number;
   events: TakeEvent[];
+  /** the MIDI file it came from, if imported: then it sings whatever the Lyrics box says */
+  source?: string;
 }
 
 interface SingState {
@@ -109,7 +111,10 @@ function keptTake(): Take | null {
     const k = JSON.parse(localStorage.getItem(KEPT_TAKE) ?? "null") as Partial<Take> | null;
     if (!k || typeof k.lyrics !== "string" || typeof k.start !== "number" || !Array.isArray(k.events)) return null;
     const events = k.events.filter((e): e is TakeEvent => !!e && typeof e.t === "number" && typeof e.midi === "number" && typeof e.vel === "number").slice(0, TAKE_MAX);
-    return events.some((e) => e.vel >= 0) ? { lyrics: k.lyrics, start: Math.max(0, Math.round(k.start)), events } : null;
+    if (!events.some((e) => e.vel >= 0)) return null;
+    const take: Take = { lyrics: k.lyrics, start: Math.max(0, Math.round(k.start)), events };
+    if (typeof k.source === "string") take.source = k.source;
+    return take;
   } catch {
     return null;
   }
@@ -140,7 +145,8 @@ export const useSing = create<SingState>((set, get) => ({
   setLyrics: (text) => {
     stopDemo();
     taking = null;
-    set({ lyrics: text, syllables: lyricsToSyllables(text), cursor: 0 });
+    const take = get().take;
+    set({ lyrics: text, syllables: lyricsToSyllables(text), cursor: 0, take: take?.source ? { ...take, lyrics: text, start: 0 } : take });
   },
   setCursor: (i) => {
     taking = null;
@@ -304,6 +310,7 @@ function record(midi: number, vel: number): void {
   if (!taking) {
     if (vel < 0) return;
     const st = useSing.getState();
+    if (st.take?.source) return;
     taking = { t0: t, take: { lyrics: st.lyrics, start: st.cursor, events: [] } };
   }
   const tk = taking.take;
@@ -312,11 +319,28 @@ function record(midi: number, vel: number): void {
   useSing.setState({ take: taking.take, tune: TAKE_ID });
 }
 
-/** each event's time in the take as it plays back (ms): pauses longer than TAKE_GAP are cut to it */
-export function takeTimes(events: TakeEvent[]): number[] {
+/** each event's time in the take as it plays back (ms): pauses the keys left longer than TAKE_GAP are cut to it */
+export function takeTimes(take: Take): number[] {
+  const { events } = take;
+  const gap = take.source ? Infinity : TAKE_GAP;
   const out: number[] = [];
-  events.forEach((e, k) => out.push(k ? out[k - 1] + Math.max(0, Math.min(TAKE_GAP, e.t - events[k - 1].t)) : 0));
+  events.forEach((e, k) => out.push(k ? out[k - 1] + Math.max(0, Math.min(gap, e.t - events[k - 1].t)) : 0));
   return out;
+}
+
+/** Make a MIDI file's melody the take, sung to the Lyrics box one syllable a note. */
+export function importTake(source: string, notes: { t: number; dur: number; midi: number; vel: number }[]): void {
+  const first = notes[0]?.t ?? 0;
+  const events: TakeEvent[] = [];
+  for (const n of notes) {
+    const t0 = Math.round(n.t - first);
+    events.push({ t: t0, midi: n.midi, vel: Math.max(1, Math.min(127, n.vel)) }, { t: t0 + Math.max(1, Math.round(n.dur)), midi: n.midi, vel: -1 });
+  }
+  events.sort((a, b) => a.t - b.t || (a.vel < 0 ? -1 : 0) - (b.vel < 0 ? -1 : 0));
+  stopDemo();
+  taking = null;
+  const st = useSing.getState();
+  useSing.setState({ take: { lyrics: st.lyrics, start: 0, events: events.slice(0, TAKE_MAX), source }, tune: TAKE_ID, cursor: 0 });
 }
 
 /** One sung note of a take: its key-down and key-up events (off −1: none), when (ms) and what. */
@@ -333,7 +357,7 @@ export interface TakeBlock {
 
 /** The take's notes as blocks on its playback clock, each with the syllable it sings. */
 export function takeBlocks(take: Take): TakeBlock[] {
-  const times = takeTimes(take.events);
+  const times = takeTimes(take);
   const own = lyricsToSyllables(take.lyrics);
   const syls = own.length ? own : [AH];
   let i = take.start % syls.length;
@@ -553,7 +577,7 @@ async function playTake(body: BodyMix, ready?: () => Promise<void>, hooks: TuneH
   const shift = st.key;
   const tempo = st.tempo;
   const events = take.events;
-  const times = takeTimes(events);
+  const times = takeTimes(take);
   let i = take.start % syls.length;
   hooks.onStart?.();
   const run = { timer: null as ReturnType<typeof setTimeout> | null, hooks, startAt: performance.now(), tempo };

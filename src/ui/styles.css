@@ -2722,3 +2722,10 @@ input[type="range"]::-moz-range-thumb {
     padding: 7px 8px 0;
   }
 }
+
+.midi-error {
+  color: var(--amber);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  align-self: center;
+}

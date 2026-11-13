@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store.ts";
-import { useSing, playTune, stopSinging, soundingSyllable, sungNow, TUNES, TAKE_ID, ensureDictionary } from "../singing.ts";
+import { useSing, playTune, stopSinging, soundingSyllable, sungNow, TUNES, TAKE_ID, ensureDictionary, importTake } from "../singing.ts";
+import { parseMidi, melodyLine, inRange, type MidiTrack } from "../midifile.ts";
 import { engine } from "../../audio/AudioEngine.ts";
 import { canRecord, Clip } from "../../song/record.ts";
 import { mouthWords } from "../mouthWords.ts";
@@ -141,6 +142,7 @@ function SingActions() {
   const tune = useSing((s) => s.tune);
   const setTune = useSing((s) => s.setTune);
   const hasTake = useSing((s) => !!s.take);
+  const source = useSing((s) => s.take?.source ?? null);
   const clearTake = useSing((s) => s.clearTake);
   const [pending, setPending] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -221,17 +223,18 @@ function SingActions() {
         label="Tune"
         icon="note"
         value={tune}
-        options={(hasTake ? [{ value: TAKE_ID, label: "Your take" }] : []).concat(TUNES.map((t) => ({ value: t.id, label: t.name })))}
+        options={(hasTake ? [{ value: TAKE_ID, label: source ? `MIDI: ${source}` : "Your take" }] : []).concat(TUNES.map((t) => ({ value: t.id, label: t.name })))}
         onChange={(id) => {
           setTune(id);
           if ((playing || pending) && !recording) sing(id);
         }}
       />
       {hasTake && tune === TAKE_ID && (
-        <Chip toggle={false} onClick={clearTake} title="Forget what the keys sang (the next key starts a new take)">
+        <Chip toggle={false} onClick={clearTake} title={source ? "Drop the imported MIDI (the next key starts a new take)" : "Forget what the keys sang (the next key starts a new take)"}>
           Clear
         </Chip>
       )}
+      <MidiImport />
       {canRecord() && (
         <Chip toggle={false} onClick={() => (recording ? stop() : sing(tune, true))} title="Sing it again and record the face into a video">
           {recording ? "Cancel" : "Video"}
@@ -248,6 +251,67 @@ function SingActions() {
         </a>
       )}
     </ActionBar>
+  );
+}
+
+/** the tracks worth singing, most notes first */
+function singable(tracks: MidiTrack[]): MidiTrack[] {
+  return tracks
+    .map((t) => ({ ...t, notes: melodyLine(t.notes).map((n) => ({ ...n, midi: inRange(n.midi) })) }))
+    .sort((a, b) => b.notes.length - a.notes.length);
+}
+
+/**
+ * Import MIDI: a local .mid file's melody becomes the take (nothing leaves the browser). Its notes
+ * keep their timing and sing the Lyrics box a syllable each; a file with several tracks gets a picker.
+ */
+function MidiImport() {
+  const source = useSing((s) => s.take?.source ?? null);
+  const file = useRef<HTMLInputElement>(null);
+  const [loaded, setLoaded] = useState<{ name: string; tracks: MidiTrack[]; pick: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const use = (name: string, tracks: MidiTrack[], pick: number) => {
+    setLoaded({ name, tracks, pick });
+    importTake(name, tracks[pick].notes);
+  };
+  const open = async (f: File | undefined) => {
+    if (!f) return;
+    setError(null);
+    try {
+      const tracks = singable(parseMidi(await f.arrayBuffer()));
+      if (!tracks.length) throw new Error("no notes");
+      use(f.name.replace(/\.midi?$/i, ""), tracks, 0);
+    } catch {
+      setLoaded(null);
+      setError("Couldn't read any notes from that file");
+    }
+  };
+  const picking = loaded && source === loaded.name && loaded.tracks.length > 1;
+  return (
+    <>
+      <input
+        ref={file}
+        type="file"
+        accept=".mid,.midi,audio/midi,audio/x-midi"
+        hidden
+        onChange={(e) => {
+          void open(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+      <Chip toggle={false} onClick={() => file.current?.click()} title="Sing a MIDI file's melody: its notes and timing, with your lyrics a syllable a note">
+        Import MIDI
+      </Chip>
+      {picking && (
+        <Menu
+          label="MIDI track"
+          value={String(loaded.pick)}
+          options={loaded.tracks.map((t, k) => ({ value: String(k), label: `${t.name || `Track ${k + 1}`} (${t.notes.length})` }))}
+          onChange={(v) => use(loaded.name, loaded.tracks, Number(v))}
+        />
+      )}
+      {error && <span className="midi-error">{error}</span>}
+    </>
   );
 }
 
