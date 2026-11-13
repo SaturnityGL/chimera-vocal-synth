@@ -27,10 +27,17 @@ interface RawNote {
 interface RawTrack {
   name: string;
   notes: RawNote[];
+  programs: Map<number, number>;
 }
 
 const DRUMS = 9;
+const FAMILIES = ["Piano", "Chromatic percussion", "Organ", "Guitar", "Bass", "Strings", "Ensemble", "Brass", "Reed", "Pipe", "Synth lead", "Synth pad", "Synth effects", "Ethnic", "Percussive", "Sound effects"];
 
+/**
+ * Every layer of the file with notes, drums left out: one per track, and one per channel within a
+ * track that plays on several (a type 0 file keeps a whole song in one track). A layer without a
+ * name of its own is named after its instrument family.
+ */
 export function parseMidi(buf: ArrayBuffer): MidiTrack[] {
   const d = new DataView(buf);
   const tag = (at: number) => String.fromCharCode(d.getUint8(at), d.getUint8(at + 1), d.getUint8(at + 2), d.getUint8(at + 3));
@@ -49,15 +56,24 @@ export function parseMidi(buf: ArrayBuffer): MidiTrack[] {
     at = start + len;
   }
   const ms = clock(division, tempos);
-  return raw
-    .map((r) => {
-      const notes = r.notes.map((x) => ({ t: ms(x.on), dur: Math.max(1, ms(x.off) - ms(x.on)), midi: x.midi, vel: x.vel, channel: x.channel }));
-      const channels = new Map<number, number>();
-      for (const x of notes) channels.set(x.channel, (channels.get(x.channel) ?? 0) + 1);
-      const channel = [...channels.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 0;
-      return { name: r.name, channel, notes: notes.filter((x) => x.channel !== DRUMS).map(({ t, dur, midi, vel }) => ({ t, dur, midi, vel })) };
-    })
-    .filter((t) => t.notes.length > 0);
+  return raw.flatMap((r) => {
+    const byChannel = new Map<number, MidiNote[]>();
+    for (const x of r.notes) {
+      if (x.channel === DRUMS) continue;
+      const list = byChannel.get(x.channel) ?? [];
+      list.push({ t: ms(x.on), dur: Math.max(1, ms(x.off) - ms(x.on)), midi: x.midi, vel: x.vel });
+      byChannel.set(x.channel, list);
+    }
+    const split = byChannel.size > 1;
+    return [...byChannel.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([channel, notes]) => {
+        const program = r.programs.get(channel);
+        const instrument = program === undefined ? `Channel ${channel + 1}` : FAMILIES[program >> 3];
+        const name = !r.name ? instrument : split ? `${r.name}: ${instrument}` : r.name;
+        return { name, channel, notes };
+      });
+  });
 }
 
 function readTrack(d: DataView, start: number, end: number, tempos: { tick: number; usPerQ: number }[]): RawTrack {
@@ -66,6 +82,7 @@ function readTrack(d: DataView, start: number, end: number, tempos: { tick: numb
   let status = 0;
   let name = "";
   const notes: RawNote[] = [];
+  const programs = new Map<number, number>();
   const open = new Map<number, RawNote[]>();
   const vlq = () => {
     let v = 0;
@@ -106,6 +123,7 @@ function readTrack(d: DataView, start: number, end: number, tempos: { tick: numb
     const channel = b & 0x0f;
     const a1 = d.getUint8(p++);
     const a2 = kind === 0xc0 || kind === 0xd0 ? 0 : d.getUint8(p++);
+    if (kind === 0xc0 && !programs.has(channel)) programs.set(channel, a1 & 0x7f);
     if (kind === 0x90 && a2 > 0) {
       const x = { on: tick, off: -1, midi: a1, vel: a2, channel };
       notes.push(x);
@@ -114,7 +132,7 @@ function readTrack(d: DataView, start: number, end: number, tempos: { tick: numb
     } else if (kind === 0x80 || kind === 0x90) close(channel, a1);
   }
   for (const x of notes) if (x.off < 0) x.off = tick;
-  return { name, notes };
+  return { name, notes, programs };
 }
 
 function clock(division: number, tempos: { tick: number; usPerQ: number }[]): (tick: number) => number {

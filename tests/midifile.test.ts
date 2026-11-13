@@ -83,6 +83,36 @@ describe("melodyLine", () => {
   });
 });
 
+test("a one-track file splits into a layer per channel, named by instrument", () => {
+  const one = (t: number[][]) => {
+    const head = chunk("MThd", [0, 0, 0, 1, 1, 224]);
+    return new Uint8Array(head.concat(...t)).buffer;
+  };
+  const split = parseMidi(
+    one([
+      track([
+        [0, 0xc0, 52],
+        [0, 0xc1, 33],
+        [0, 0x90, 67, 90],
+        [0, 0x91, 40, 80],
+        [0, 0x92, 60, 70],
+        [0, 0x99, 36, 100],
+        [480, 0x80, 67, 0],
+        [0, 0x81, 40, 0],
+        [0, 0x82, 60, 0],
+        [0, 0x89, 36, 0],
+      ]),
+    ]),
+  );
+  expect(split.map((t) => [t.name, t.channel, t.notes.length])).toEqual([
+    ["Ensemble", 0, 1],
+    ["Bass", 1, 1],
+    ["Channel 3", 2, 1],
+  ]);
+  const named = parseMidi(one([track([name("Song"), [0, 0xc0, 0], [0, 0x90, 60, 90], [0, 0x91, 48, 90], [480, 0x80, 60, 0], [0, 0x81, 48, 0]])]));
+  expect(named.map((t) => t.name)).toEqual(["Song: Piano", "Song: Channel 2"]);
+});
+
 test("inRange folds by octaves", () => {
   expect(inRange(12)).toBe(24);
   expect(inRange(110)).toBe(98 - 12);
